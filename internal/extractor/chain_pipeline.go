@@ -9,7 +9,7 @@ import (
 	"github.com/Panorama-Block/avax/internal/types"
 )
 
-func StartPipeline(client *api.Client, producer *kafka.Producer) {
+func StartChainPipeline(client *api.Client, producer *kafka.Producer) {
 	chains, err := client.GetChains()
 	if err != nil {
 		log.Printf("Erro ao obter chains: %v", err)

@@ -27,10 +27,12 @@ func (p *Producer) Send(chain *types.Chain) {
 		TopicPartition: kafka.TopicPartition{Topic: &p.Topic, Partition: kafka.PartitionAny},
 		Value:          data,
 	}, nil)
-
 	if err != nil {
 		log.Printf("Erro ao enviar mensagem para Kafka: %v", err)
 	} else {
 		log.Println("Publicado no Kafka:", string(data))
 	}
+
+	p.Producer.Flush(1000)
 }
+

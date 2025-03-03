@@ -2,6 +2,7 @@ package config
 import (
 	"log"
 	"os"
+	"strconv"
 
 	"github.com/joho/godotenv"
 )
@@ -11,6 +12,8 @@ type Config struct {
 	APIKey string
 	KafkaBroker string
 	KafkaTopic string
+	WebhookPort string
+	Workers int
 }
 
 func LoadConfig() *Config {
@@ -18,11 +21,17 @@ func LoadConfig() *Config {
 	if err != nil {
 		log.Fatalf("Error loading .env file", err)
 	}
+	workers, err := strconv.Atoi(os.Getenv("WORKERS"))
+	if err != nil || workers <= 0 {
+		workers = 5 
+	}
 
 	return &Config{
 		APIUrl: os.Getenv("API_URL"),
 		APIKey: os.Getenv("API_KEY"),
 		KafkaBroker: os.Getenv("KAFKA_BROKER"),
-		KafkaTopic: os.Getenv("KAFKA_TOPIC"),
+		KafkaTopic: os.Getenv("KAFKA_TOPIC"), 
+		WebhookPort: os.Getenv("WEBHOOK_PORT"),
+		Workers: workers,
 	}
 }
