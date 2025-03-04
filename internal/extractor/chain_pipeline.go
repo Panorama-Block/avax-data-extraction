@@ -9,6 +9,7 @@ import (
 	"github.com/Panorama-Block/avax/internal/types"
 )
 
+// StartChainPipeline fetches all chains and sends them to Kafka
 func StartChainPipeline(client *api.Client, producer *kafka.Producer) {
 	chains, err := client.GetChains()
 	if err != nil {
@@ -36,6 +37,6 @@ func StartChainPipeline(client *api.Client, producer *kafka.Producer) {
 	close(results)
 
 	for chain := range results {
-		producer.Send(chain)
+		producer.SendChain(chain)
 	}
 }

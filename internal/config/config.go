@@ -1,4 +1,5 @@
 package config
+
 import (
 	"log"
 	"os"
@@ -8,30 +9,31 @@ import (
 )
 
 type Config struct {
-	APIUrl string
-	APIKey string
+	APIUrl      string
+	APIKey      string
 	KafkaBroker string
-	KafkaTopic string
+	KafkaTopic  string
 	WebhookPort string
-	Workers int
+	Workers     int
 }
 
 func LoadConfig() *Config {
 	err := godotenv.Load(".env")
 	if err != nil {
-		log.Fatalf("Error loading .env file", err)
+		log.Println(".env not found")
 	}
+
 	workers, err := strconv.Atoi(os.Getenv("WORKERS"))
 	if err != nil || workers <= 0 {
-		workers = 5 
+		workers = 5
 	}
 
 	return &Config{
-		APIUrl: os.Getenv("API_URL"),
-		APIKey: os.Getenv("API_KEY"),
+		APIUrl:      os.Getenv("API_URL"),
+		APIKey:      os.Getenv("API_KEY"),
 		KafkaBroker: os.Getenv("KAFKA_BROKER"),
-		KafkaTopic: os.Getenv("KAFKA_TOPIC"), 
+		KafkaTopic:  os.Getenv("KAFKA_TOPIC"),
 		WebhookPort: os.Getenv("WEBHOOK_PORT"),
-		Workers: workers,
+		Workers:     workers,
 	}
 }

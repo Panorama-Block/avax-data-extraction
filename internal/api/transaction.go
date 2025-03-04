@@ -7,7 +7,7 @@ import (
 	"github.com/Panorama-Block/avax/internal/types"
 )
 
-// Obtém detalhes completos de uma transação
+// GetTransaction obtém detalhes completos de uma transação
 func (c *Client) GetTransaction(txHash string) (*types.Transaction, error) {
 	body, err := c.makeRequest("/transactions/" + txHash)
 	if err != nil {

@@ -42,10 +42,5 @@ func (c *Client) makeRequest(endpoint string) ([]byte, error) {
 		return nil, errors.New("erro na requisição: " + resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return body, nil
+	return io.ReadAll(resp.Body)
 }

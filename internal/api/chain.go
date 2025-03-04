@@ -7,7 +7,7 @@ import (
 	"github.com/Panorama-Block/avax/internal/types"
 )
 
-// GetChains busca todas as chains disponíveis na API da AvaCloud
+// GetChains busca todas as chains disponíveis na API
 func (c *Client) GetChains() ([]types.Chain, error) {
 	body, err := c.makeRequest("/chains")
 	if err != nil {

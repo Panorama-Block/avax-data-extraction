@@ -1,25 +1,38 @@
 package main
 
 import (
+	"log"
+
 	"github.com/Panorama-Block/avax/internal/config"
 	"github.com/Panorama-Block/avax/internal/extractor"
 	"github.com/Panorama-Block/avax/internal/kafka"
 	"github.com/Panorama-Block/avax/internal/webhook"
+	"github.com/Panorama-Block/avax/internal/api"
 	"github.com/Panorama-Block/avax/internal/types"
 )
 
 func main() {
+	// Load config
 	cfg := config.LoadConfig()
-	// client := api.NewClient(cfg.APIUrl, cfg.APIKey)
+
+	// Start API Client 
+	client := api.NewClient(cfg.APIUrl, cfg.APIKey)
+
+	// Start Kafka Producer
 	producer := kafka.NewProducer(cfg.KafkaBroker, cfg.KafkaTopic)
 
-	// extractor.StartChainPipeline(client, producer)
+	// Start Chain Pipeline 
+	go extractor.StartChainPipeline(client, producer)
 
-	// Canal de eventos Webhook
+	// Channel to receive Webhook events
 	eventChan := make(chan types.WebhookEvent, 100)
 
-	// Iniciar Webhook
+	// Start Webhook Server
 	webhookServer := webhook.NewWebhookServer(eventChan, cfg.WebhookPort)
 	go webhookServer.Start()
+
+	// Start Transaction Pipeline
 	extractor.StartTxPipeline(producer, eventChan, cfg.Workers)
+
+	log.Println("End Application")
 }
