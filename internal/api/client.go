@@ -50,4 +50,3 @@ func (c *Client) makeRequest(endpoint string) ([]byte, error) {
     }
 
     return io.ReadAll(resp.Body)
-}

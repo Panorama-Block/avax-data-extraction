@@ -146,4 +146,3 @@ func (p *Producer) PublishDelegator(del types.Delegator) {
 func (p *Producer) PublishBridgeTx(tx types.TeleporterTx) {
     data, _ := json.Marshal(tx)
     p.sendMessage(p.TopicBridges, data)
-}

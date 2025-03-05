@@ -38,4 +38,3 @@ func StartChainPipeline(client *api.Client, producer *kafka.Producer) {
     for ch := range results {
         producer.PublishChain(ch)
     }
-}
