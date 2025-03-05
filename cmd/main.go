@@ -1,38 +1,41 @@
+// cmd/main.go
 package main
 
 import (
-	"log"
+    "time"
 
-	"github.com/Panorama-Block/avax/internal/config"
-	"github.com/Panorama-Block/avax/internal/extractor"
-	"github.com/Panorama-Block/avax/internal/kafka"
-	"github.com/Panorama-Block/avax/internal/webhook"
-	"github.com/Panorama-Block/avax/internal/api"
-	"github.com/Panorama-Block/avax/internal/types"
+    "github.com/Panorama-Block/avax/internal/api"
+    "github.com/Panorama-Block/avax/internal/config"
+    "github.com/Panorama-Block/avax/internal/extractor"
+    "github.com/Panorama-Block/avax/internal/kafka"
+    "github.com/Panorama-Block/avax/internal/types"
+    "github.com/Panorama-Block/avax/internal/webhook"
 )
 
 func main() {
-	// Load config
-	cfg := config.LoadConfig()
+    cfg := config.LoadConfig()
+    client := api.NewClient(cfg.APIUrl, cfg.APIKey)
+    producer := kafka.NewProducer(cfg)
 
-	// Start API Client 
-	client := api.NewClient(cfg.APIUrl, cfg.APIKey)
+    // WebSocket (sem delay)
+    go extractor.StartBlockWebSocket(client, producer)
 
-	// Start Kafka Producer
-	producer := kafka.NewProducer(cfg.KafkaBroker, cfg.KafkaTopic)
+    // Webhook
+    eventChan := make(chan types.WebhookEvent, 100)
+    wh := webhook.NewWebhookServer(eventChan, cfg.WebhookPort)
+    go wh.Start()
 
-	// Start Chain Pipeline 
-	go extractor.StartChainPipeline(client, producer)
+    // Pipeline de tx do webhook
+    go extractor.StartTxPipeline(client, producer, eventChan, cfg.Workers)
 
-	// Channel to receive Webhook events
-	eventChan := make(chan types.WebhookEvent, 100)
+    // Chain pipeline
+    go extractor.StartChainPipeline(client, producer)
 
-	// Start Webhook Server
-	webhookServer := webhook.NewWebhookServer(eventChan, cfg.WebhookPort)
-	go webhookServer.Start()
+    // Cronjobs
+    go extractor.StartCronJobs(client, producer, "mainnet")
 
-	// Start Transaction Pipeline
-	extractor.StartTxPipeline(producer, eventChan, cfg.Workers)
+    // Metrics
+    go extractor.StartMetricsPipeline(client, producer, 30*time.Second, cfg.TokenAddresses)
 
-	log.Println("End Application")
+    select {}
 }
