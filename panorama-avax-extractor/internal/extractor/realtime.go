@@ -51,7 +51,7 @@ func NewRealTimeExtractor(
         chainID:       chainID,
         chainName:     chainName,
         
-        blocksCh:      make(chan *newHeadsData, 256),
+        blocksCh:      make(chan *newHeadsData, 500),
         errorCh:       make(chan error, 10),
         stop:          make(chan struct{}),
     }
@@ -68,7 +68,6 @@ func (r *RealTimeExtractor) Start(ctx context.Context) error {
     
     log.Printf("Iniciando extrator em tempo real para chain %s (%s)", r.chainName, r.chainID)
     
-    // Conectar ao WebSocket
     var err error
     r.conn, _, err = websocket.DefaultDialer.Dial(r.wsEndpoint, nil)
     if err != nil {

@@ -45,11 +45,11 @@ func main() {
 		defer wsServer.Stop(ctx)
 	}
 	
-	eventChan := make(chan types.WebhookEvent, 100)
+	eventChan := make(chan types.WebhookEvent, 1000)
 	wh := webhook.NewWebhookServer(eventChan, cfg.WebhookPort)
 	go wh.Start()
 	
-	transactionPipeline := extractor.NewTransactionPipeline(dataAPI, producer, cfg.Workers, 256)
+	transactionPipeline := extractor.NewTransactionPipeline(dataAPI, producer, cfg.Workers, 1000)
 	if err := transactionPipeline.Start(ctx); err != nil {
 		log.Fatalf("Erro ao iniciar pipeline de transações: %v", err)
 	}
@@ -80,18 +80,14 @@ func main() {
 		log.Printf("Erro ao iniciar gerenciador de jobs cron: %v", err)
 	}
 	
-	// Iniciar pipeline de métricas
 	metricsPipeline := extractor.NewMetricsPipeline(metricsAPI, producer, "mainnet", 30*time.Second)
-	metricsPipeline.SetChains([]string{"43114"}) // Avalanche C-Chain
+	metricsPipeline.SetChains([]string{"43114"}) 
 	if err := metricsPipeline.Start(ctx); err != nil {
 		log.Printf("Erro ao iniciar pipeline de métricas: %v", err)
 	}
 	
-	// Capturar sinais de interrupção
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	
-	// Aguardar sinal de término
 	<-sigChan
 	log.Println("Sinal de interrupção recebido, encerrando...")
 	

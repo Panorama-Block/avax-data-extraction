@@ -12,20 +12,16 @@ import (
     "github.com/Panorama-Block/avax/internal/types"
 )
 
-// TransactionPipeline gerencia o processamento de transações a partir de eventos webhook
 type TransactionPipeline struct {
     dataAPI       *api.DataAPI
     kafkaProducer *kafka.Producer
     
-    // Canais
     eventCh       chan types.WebhookEvent
     stop          chan struct{}
     
-    // Configuração
     workerCount   int
     bufferSize    int
-    
-    // Estatísticas
+
     mutex         sync.Mutex
     processed     int64
     errors        int64
@@ -33,7 +29,6 @@ type TransactionPipeline struct {
     startTime     time.Time
 }
 
-// NewTransactionPipeline cria um novo pipeline de transações
 func NewTransactionPipeline(
     dataAPI *api.DataAPI,
     kafkaProducer *kafka.Producer,
@@ -50,7 +45,6 @@ func NewTransactionPipeline(
     }
 }
 
-// Start inicia o pipeline de processamento de transações
 func (t *TransactionPipeline) Start(ctx context.Context) error {
     t.mutex.Lock()
     if t.running {
@@ -65,7 +59,6 @@ func (t *TransactionPipeline) Start(ctx context.Context) error {
     
     log.Printf("Iniciando pipeline de processamento de transações com %d workers", t.workerCount)
     
-    // Inicia as goroutines trabalhadoras
     for i := 0; i < t.workerCount; i++ {
         go t.worker(ctx, i)
     }
@@ -73,7 +66,6 @@ func (t *TransactionPipeline) Start(ctx context.Context) error {
     return nil
 }
 
-// Stop interrompe o pipeline de processamento de transações
 func (t *TransactionPipeline) Stop() {
     t.mutex.Lock()
     defer t.mutex.Unlock()
@@ -87,13 +79,11 @@ func (t *TransactionPipeline) Stop() {
     log.Printf("Interrompendo pipeline de processamento de transações")
 }
 
-// Submit adiciona um evento webhook à fila de processamento
 func (t *TransactionPipeline) Submit(event types.WebhookEvent) error {
     if !t.running {
         return fmt.Errorf("pipeline de transações não está em execução")
     }
     
-    // Tenta adicionar o evento ao canal
     select {
     case t.eventCh <- event:
         return nil
@@ -102,7 +92,6 @@ func (t *TransactionPipeline) Submit(event types.WebhookEvent) error {
     }
 }
 
-// worker processa eventos webhook
 func (t *TransactionPipeline) worker(ctx context.Context, id int) {
     log.Printf("Worker de transação %d iniciado", id)
     
@@ -118,10 +107,8 @@ func (t *TransactionPipeline) worker(ctx context.Context, id int) {
             erc1155Chan := make(chan types.ERC1155Transfer, len(event.Event.Transaction.ERC1155Transfers))
             logChan := make(chan types.Log, len(event.Event.Transaction.Logs))
             
-            // Processa a transação
             txChan <- &event.Event.Transaction
             
-            // Processa transferências de tokens
             for _, e20 := range event.Event.Transaction.ERC20Transfers {
                 erc20Chan <- e20
             }
@@ -135,21 +122,18 @@ func (t *TransactionPipeline) worker(ctx context.Context, id int) {
                 logChan <- lg
             }
             
-            // Fecha os canais após enviar todos os itens
             close(txChan)
             close(erc20Chan)
             close(erc721Chan)
             close(erc1155Chan)
             close(logChan)
             
-            // Publica os itens no Kafka
             go t.kafkaProducer.PublishTransactions(txChan)
             go t.kafkaProducer.PublishERC20Transfers(erc20Chan)
             go t.kafkaProducer.PublishERC721Transfers(erc721Chan)
             go t.kafkaProducer.PublishERC1155Transfers(erc1155Chan)
             go t.kafkaProducer.PublishLogs(logChan)
             
-            // Atualiza estatísticas
             t.mutex.Lock()
             t.processed++
             t.mutex.Unlock()
@@ -157,7 +141,6 @@ func (t *TransactionPipeline) worker(ctx context.Context, id int) {
     }
 }
 
-// Status retorna o status atual do pipeline
 func (t *TransactionPipeline) Status() map[string]interface{} {
     t.mutex.Lock()
     defer t.mutex.Unlock()
