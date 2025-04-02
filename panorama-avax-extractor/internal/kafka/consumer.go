@@ -10,24 +10,20 @@ import (
     "github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
-// Consumer gerencia o consumo de dados dos tópicos Kafka
 type Consumer struct {
     consumer   *kafka.Consumer
-    
-    // Estatísticas
+
     mutex             sync.Mutex
     messagesConsumed  int64
     lastConsumeTime   time.Time
     running           bool
 }
 
-// NewConsumer cria um novo consumidor Kafka
 func NewConsumer(
     bootstrapServers string,
     groupID string,
     config *kafka.ConfigMap,
 ) (*Consumer, error) {
-    // Adiciona bootstrap servers e group ID à configuração
     if config == nil {
         config = &kafka.ConfigMap{}
     }
@@ -42,7 +38,7 @@ func NewConsumer(
         return nil, fmt.Errorf("falha ao definir group ID: %w", err)
     }
     
-    // Define alguns padrões sensatos
+
     err = config.SetKey("auto.offset.reset", "latest")
     if err != nil {
         return nil, fmt.Errorf("falha ao definir auto.offset.reset: %w", err)
@@ -53,7 +49,6 @@ func NewConsumer(
         return nil, fmt.Errorf("falha ao definir enable.auto.commit: %w", err)
     }
     
-    // Cria consumidor
     consumer, err := kafka.NewConsumer(config)
     if err != nil {
         return nil, fmt.Errorf("falha ao criar consumidor Kafka: %w", err)
@@ -65,7 +60,6 @@ func NewConsumer(
     }, nil
 }
 
-// Close fecha o consumidor Kafka
 func (c *Consumer) Close() error {
     c.mutex.Lock()
     c.running = false
@@ -74,14 +68,11 @@ func (c *Consumer) Close() error {
     return c.consumer.Close()
 }
 
-// Subscribe inscreve-se em tópicos Kafka
 func (c *Consumer) Subscribe(topics []string) error {
-    // Processa curingas em tópicos
     expandedTopics := make([]string, 0, len(topics))
     
     for _, topic := range topics {
         if strings.Contains(topic, "*") {
-            // Tópico contém um curinga, precisamos listar tópicos e filtrar
             metadata, err := c.consumer.GetMetadata(nil, true, 10000)
             if err != nil {
                 return fmt.Errorf("falha ao obter metadados: %w", err)
@@ -95,7 +86,6 @@ func (c *Consumer) Subscribe(topics []string) error {
                 }
             }
         } else {
-            // Tópico regular
             expandedTopics = append(expandedTopics, topic)
         }
     }
@@ -109,17 +99,14 @@ func (c *Consumer) Subscribe(topics []string) error {
     return c.consumer.SubscribeTopics(expandedTopics, nil)
 }
 
-// Poll busca por uma mensagem do Kafka
 func (c *Consumer) Poll(timeoutMs int) (*Message, error) {
-    // Verifica se ainda estamos em execução
     c.mutex.Lock()
     if !c.running {
         c.mutex.Unlock()
         return nil, fmt.Errorf("consumer está fechado")
     }
     c.mutex.Unlock()
-    
-    // Poll para uma mensagem
+
     ev := c.consumer.Poll(timeoutMs)
     if ev == nil {
         return nil, nil
@@ -127,13 +114,11 @@ func (c *Consumer) Poll(timeoutMs int) (*Message, error) {
     
     switch e := ev.(type) {
     case *kafka.Message:
-        // Atualiza estatísticas
         c.mutex.Lock()
         c.messagesConsumed++
         c.lastConsumeTime = time.Now()
         c.mutex.Unlock()
-        
-        // Converte para o nosso tipo de mensagem
+
         return &Message{
             Topic:     *e.TopicPartition.Topic,
             Partition: int(e.TopicPartition.Partition),
@@ -145,12 +130,10 @@ func (c *Consumer) Poll(timeoutMs int) (*Message, error) {
     case kafka.Error:
         return nil, fmt.Errorf("Kafka error: %v", e)
     default:
-        // Ignora outros tipos de eventos
         return nil, nil
     }
 }
 
-// Message representa uma mensagem Kafka
 type Message struct {
     Topic     string
     Partition int
@@ -160,7 +143,6 @@ type Message struct {
     Timestamp time.Time
 }
 
-// Status retorna o status atual do consumidor
 func (c *Consumer) Status() map[string]interface{} {
     c.mutex.Lock()
     defer c.mutex.Unlock()
@@ -183,10 +165,8 @@ func (c *Consumer) Status() map[string]interface{} {
     }
 }
 
-// Função auxiliar para verificar se um tópico corresponde a um padrão curinga
 func matchesWildcard(topic, pattern string) bool {
-    // Correspondência simples de curinga
-    // Esta é uma versão simplificada; para produção, considere usar uma biblioteca regex
+
     parts := strings.Split(pattern, ".")
     topicParts := strings.Split(topic, ".")
     

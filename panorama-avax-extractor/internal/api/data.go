@@ -223,7 +223,7 @@ func (c *DataAPI) GetTokenDetails(tokenAddress string) (*types.TokenInfo, error)
     return &tokenDetails, nil
 }
 
-// GetTransaction obtém detalhes de uma transação específica
+
 func (c *DataAPI) GetTransaction(chainID, txHash string) (*TransactionDetail, error) {
     endpoint := fmt.Sprintf("/v1/chains/%s/transactions/%s", chainID, txHash)
     respBody, err := c.client.SendRequest("GET", endpoint, nil, nil)
@@ -239,7 +239,6 @@ func (c *DataAPI) GetTransaction(chainID, txHash string) (*TransactionDetail, er
     return &response, nil
 }
 
-// TransactionDetail inclui a transação e suas transferências associadas
 type TransactionDetail struct {
     Transaction         Transaction          `json:"nativeTransaction"`
     ERC20Transfers      []ERC20Transfer      `json:"erc20Transfers,omitempty"`
@@ -248,7 +247,6 @@ type TransactionDetail struct {
     InternalTransactions []InternalTransaction `json:"internalTransactions,omitempty"`
 }
 
-// Transaction representa uma transação em uma chain compatível com EVM
 type Transaction struct {
     BlockHash       string `json:"blockHash"`
     BlockNumber     string `json:"blockNumber"`
@@ -269,7 +267,6 @@ type Transaction struct {
     MaxPriorityFee  string `json:"maxPriorityFee,omitempty"`
 }
 
-// Address representa um endereço com metadados adicionais
 type Address struct {
     Address  string `json:"address"`
     Name     string `json:"name,omitempty"`
@@ -278,7 +275,6 @@ type Address struct {
     Decimals int    `json:"decimals,omitempty"`
 }
 
-// Token representa um token com seus metadados
 type Token struct {
     Address  string      `json:"address,omitempty"`
     Name     string      `json:"name"`
@@ -288,13 +284,11 @@ type Token struct {
     Price    *TokenPrice `json:"price,omitempty"`
 }
 
-// TokenPrice representa informações de preço de um token
 type TokenPrice struct {
     Value        float64 `json:"value"`
     CurrencyCode string  `json:"currencyCode"`
 }
 
-// ERC20Transfer representa uma transferência de token ERC-20
 type ERC20Transfer struct {
     BlockHash      string `json:"blockHash"`
     BlockNumber    string `json:"blockNumber"`
@@ -306,7 +300,6 @@ type ERC20Transfer struct {
     LogIndex       string `json:"logIndex,omitempty"`
 }
 
-// ERC721Transfer representa uma transferência de token ERC-721 (NFT)
 type ERC721Transfer struct {
     BlockHash       string `json:"blockHash"`
     BlockNumber     string `json:"blockNumber"`
@@ -318,7 +311,6 @@ type ERC721Transfer struct {
     LogIndex        string  `json:"logIndex,omitempty"`
 }
 
-// ERC1155Transfer representa uma transferência de token ERC-1155
 type ERC1155Transfer struct {
     BlockHash       string  `json:"blockHash"`
     BlockNumber     string  `json:"blockNumber"`
@@ -331,7 +323,6 @@ type ERC1155Transfer struct {
     LogIndex        string  `json:"logIndex,omitempty"`
 }
 
-// InternalTransaction representa uma transação interna
 type InternalTransaction struct {
     BlockHash       string  `json:"blockHash,omitempty"`
     BlockNumber     string  `json:"blockNumber,omitempty"`

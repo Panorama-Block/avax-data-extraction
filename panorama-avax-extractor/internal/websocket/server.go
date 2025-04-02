@@ -15,7 +15,6 @@ import (
     "github.com/Panorama-Block/avax/internal/kafka"
 )
 
-// Server representa um servidor WebSocket para streaming de dados para o frontend
 type Server struct {
     port             string
     upgrader         websocket.Upgrader
@@ -23,7 +22,6 @@ type Server struct {
     kafkaConsumer    *kafka.Consumer
     server           *http.Server
 
-    // Estatísticas
     mutex            sync.Mutex
     running          bool
     startTime        time.Time
@@ -31,13 +29,11 @@ type Server struct {
     messagesTotal    int
 }
 
-// NewServer cria um novo servidor WebSocket
 func NewServer(port string, kafkaConsumer *kafka.Consumer) *Server {
     upgrader := websocket.Upgrader{
         ReadBufferSize:  1024,
         WriteBufferSize: 1024,
         CheckOrigin: func(r *http.Request) bool {
-            // Permite todas as origens por enquanto; ideal restringir em produção
             return true
         },
     }
@@ -50,7 +46,6 @@ func NewServer(port string, kafkaConsumer *kafka.Consumer) *Server {
     }
 }
 
-// Start inicia o servidor WebSocket
 func (s *Server) Start() error {
     s.mutex.Lock()
     if s.running {
@@ -63,10 +58,8 @@ func (s *Server) Start() error {
     s.messagesTotal = 0
     s.mutex.Unlock()
 
-    // Inicia o gerenciador de clientes
     go s.clientManager.Run()
 
-    // Cria servidor HTTP
     mux := http.NewServeMux()
     mux.HandleFunc("/ws", s.handleWebSocket)
     mux.HandleFunc("/health", s.handleHealth)
@@ -78,10 +71,8 @@ func (s *Server) Start() error {
 
     log.Printf("Iniciando servidor WebSocket na porta %s", s.port)
 
-    // Inicia consumidor Kafka para blocos, transações e whale alerts
     go s.consumeKafkaMessages()
 
-    // Inicia o servidor em uma goroutine
     go func() {
         if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
             log.Printf("Erro no servidor WebSocket: %v", err)
@@ -91,7 +82,6 @@ func (s *Server) Start() error {
     return nil
 }
 
-// Stop interrompe o servidor WebSocket
 func (s *Server) Stop(ctx context.Context) error {
     s.mutex.Lock()
     if !s.running {
@@ -101,10 +91,8 @@ func (s *Server) Stop(ctx context.Context) error {
     s.running = false
     s.mutex.Unlock()
 
-    // Fecha todas as conexões de clientes
     s.clientManager.CloseAll()
 
-    // Desliga o servidor
     if err := s.server.Shutdown(ctx); err != nil {
         return fmt.Errorf("erro ao desligar servidor WebSocket: %w", err)
     }
@@ -113,28 +101,22 @@ func (s *Server) Stop(ctx context.Context) error {
     return nil
 }
 
-// handleWebSocket gerencia uma conexão WebSocket
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-    // Extrai parâmetros de inscrição da requisição
     topicParam := r.URL.Query().Get("topic")
     chainID := r.URL.Query().Get("chainId")
 
-    // Atualiza a conexão HTTP para uma conexão WebSocket
     conn, err := s.upgrader.Upgrade(w, r, nil)
     if err != nil {
         log.Printf("Falha ao atualizar conexão: %v", err)
         return
     }
 
-    // Cria um novo cliente
     client := NewClient(conn)
     client.Topic = topicParam
     client.ChainID = chainID
 
-    // Registra o cliente no gerenciador de clientes
     s.clientManager.Register(client)
 
-    // Incrementa contador de conexões
     s.mutex.Lock()
     s.connectionsTotal++
     s.mutex.Unlock()
@@ -142,36 +124,29 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
     log.Printf("Nova conexão WebSocket: %s (tópico: %s, chainId: %s)",
         conn.RemoteAddr(), topicParam, chainID)
 
-    // Gerencia mensagens do cliente (inscrições, etc.)
     go client.ReadPump(s.handleClientMessage)
 
-    // Envia mensagens para o cliente
     go client.WritePump()
 }
 
-// handleClientMessage gerencia uma mensagem de um cliente
 func (s *Server) handleClientMessage(client *Client, message []byte) {
-    // Analisa a mensagem
     var msg map[string]interface{}
     if err := json.Unmarshal(message, &msg); err != nil {
         log.Printf("Erro ao analisar mensagem do cliente: %v", err)
         return
     }
 
-    // Verifica mensagem de inscrição
     if action, ok := msg["action"].(string); ok && action == "subscribe" {
         topic, ok1 := msg["topic"].(string)
         chainID, ok2 := msg["chainId"].(string)
 
         if ok1 && ok2 {
-            // Atualiza inscrição do cliente
             client.Topic = topic
             client.ChainID = chainID
 
             log.Printf("Cliente %s inscrito no tópico: %s, chainId: %s",
                 client.ID, topic, chainID)
 
-            // Envia reconhecimento de inscrição
             ack := map[string]interface{}{
                 "type":    "subscription",
                 "status":  "success",
@@ -184,7 +159,6 @@ func (s *Server) handleClientMessage(client *Client, message []byte) {
     }
 }
 
-// handleHealth gerencia requisições de verificação de saúde
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
     s.mutex.Lock()
     defer s.mutex.Unlock()
@@ -194,7 +168,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
         uptime = "0s"
     }
 
-    // Retorna status de saúde como JSON
     status := map[string]interface{}{
         "status":           "UP",
         "connections":      s.clientManager.Count(),
@@ -207,13 +180,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
     _ = json.NewEncoder(w).Encode(status)
 }
 
-// consumeKafkaMessages consome mensagens do Kafka e as transmite para os clientes
+
 func (s *Server) consumeKafkaMessages() {
-    // Inscreve-se em tópicos de blocos, transações e whale alerts
     topics := []string{
-        "avalanche.blocks.*",       // Todos os tópicos de blocos
-        "avalanche.transactions.*", // Todos os tópicos de transações
-        "avalanche.whalealerts.*",  // Todos os tópicos de alertas de baleias
+        "avalanche.blocks.*",     
+        "avalanche.transactions.*", 
+        "avalanche.whalealerts.*", 
     }
 
     if err := s.kafkaConsumer.Subscribe(topics); err != nil {
@@ -224,26 +196,20 @@ func (s *Server) consumeKafkaMessages() {
     log.Printf("Inscrito em tópicos Kafka: %v", topics)
 
     for s.running {
-        // Poll para mensagens (100ms)
         msg, err := s.kafkaConsumer.Poll(100)
         if err != nil {
-            if s.running { // Só registra erro se ainda estivermos rodando
+            if s.running { 
                 log.Printf("Erro ao sondar Kafka: %v", err)
             }
             continue
         }
-
-        // Se não chegou mensagem, pula
         if msg == nil {
             continue
         }
-
-        // Processa a mensagem
         s.processKafkaMessage(msg)
     }
 }
 
-// processKafkaMessage processa uma mensagem do Kafka
 func (s *Server) processKafkaMessage(msg *kafka.Message) {
     topic := msg.Topic
     parts := strings.Split(topic, ".")
@@ -251,33 +217,26 @@ func (s *Server) processKafkaMessage(msg *kafka.Message) {
         log.Printf("Formato de tópico inválido: %s", topic)
         return
     }
-
-    // Exemplo: avalanche.blocks.43114 => dataType = "blocks", chainID = "43114"
     dataType := parts[1]
     chainID := parts[2]
 
-    // Análise do payload da mensagem como JSON
     var data map[string]interface{}
     if err := json.Unmarshal(msg.Value, &data); err != nil {
         log.Printf("Erro ao analisar mensagem Kafka: %v", err)
         return
     }
 
-    // Adiciona metadados
     data["type"] = dataType
     data["chainId"] = chainID
     data["receivedAt"] = time.Now().Unix()
 
-    // Transmite para clientes
     s.broadcastToClients(dataType, chainID, data)
 
-    // Atualiza estatísticas
     s.mutex.Lock()
     s.messagesTotal++
     s.mutex.Unlock()
 }
 
-// broadcastToClients transmite uma mensagem para todos os clientes inscritos no tópico
 func (s *Server) broadcastToClients(dataType, chainID string, data map[string]interface{}) {
     message := map[string]interface{}{
         "type":      dataType,
@@ -288,7 +247,6 @@ func (s *Server) broadcastToClients(dataType, chainID string, data map[string]in
     s.clientManager.Broadcast(dataType, chainID, message)
 }
 
-// Status retorna o status atual do servidor WebSocket
 func (s *Server) Status() map[string]interface{} {
     s.mutex.Lock()
     defer s.mutex.Unlock()
@@ -309,7 +267,6 @@ func (s *Server) Status() map[string]interface{} {
     }
 }
 
-// ClientManager gerencia clientes WebSocket
 type ClientManager struct {
     clients    map[*Client]bool
     register   chan *Client
@@ -318,14 +275,12 @@ type ClientManager struct {
     mutex      sync.Mutex
 }
 
-// BroadcastMessage representa uma mensagem a ser transmitida para clientes
 type BroadcastMessage struct {
     Topic   string
     ChainID string
     Data    map[string]interface{}
 }
 
-// NewClientManager cria um novo gerenciador de clientes
 func NewClientManager() *ClientManager {
     return &ClientManager{
         clients:    make(map[*Client]bool),
@@ -335,7 +290,6 @@ func NewClientManager() *ClientManager {
     }
 }
 
-// Run inicia o gerenciador de clientes
 func (m *ClientManager) Run() {
     for {
         select {
@@ -348,14 +302,13 @@ func (m *ClientManager) Run() {
             m.mutex.Lock()
             if _, ok := m.clients[client]; ok {
                 delete(m.clients, client)
-                close(client.SendCh) // agora fechamos o canal SendCh
+                close(client.SendCh) 
             }
             m.mutex.Unlock()
 
         case message := <-m.broadcast:
             m.mutex.Lock()
             for client := range m.clients {
-                // Envia a mensagem para clientes que correspondem ao tópico e chainID ou usam curingas
                 if (client.Topic == message.Topic || client.Topic == "*" || client.Topic == "") &&
                     (client.ChainID == message.ChainID || client.ChainID == "*" || client.ChainID == "") {
                     select {
@@ -371,17 +324,14 @@ func (m *ClientManager) Run() {
     }
 }
 
-// Register registra um cliente
 func (m *ClientManager) Register(client *Client) {
     m.register <- client
 }
 
-// Unregister cancela o registro de um cliente
 func (m *ClientManager) Unregister(client *Client) {
     m.unregister <- client
 }
 
-// Broadcast transmite uma mensagem para todos os clientes com inscrições correspondentes
 func (m *ClientManager) Broadcast(topic, chainID string, data map[string]interface{}) {
     m.broadcast <- &BroadcastMessage{
         Topic:   topic,
@@ -390,14 +340,12 @@ func (m *ClientManager) Broadcast(topic, chainID string, data map[string]interfa
     }
 }
 
-// Count retorna o número de clientes conectados
 func (m *ClientManager) Count() int {
     m.mutex.Lock()
     defer m.mutex.Unlock()
     return len(m.clients)
 }
 
-// CloseAll fecha todas as conexões de clientes
 func (m *ClientManager) CloseAll() {
     m.mutex.Lock()
     defer m.mutex.Unlock()
@@ -408,16 +356,15 @@ func (m *ClientManager) CloseAll() {
     }
 }
 
-// Client representa um cliente WebSocket
 type Client struct {
     ID      string
     Conn    *websocket.Conn
-    SendCh  chan map[string]interface{} // Renomeamos de "Send" para "SendCh"
-    Topic   string // Tópico de inscrição (blocks, transactions, etc.)
-    ChainID string // Filtro de Chain ID (43114, etc.)
+    SendCh  chan map[string]interface{} 
+    Topic   string 
+    ChainID string 
 }
 
-// NewClient cria um novo cliente WebSocket
+
 func NewClient(conn *websocket.Conn) *Client {
     return &Client{
         ID:     fmt.Sprintf("%d", time.Now().UnixNano()),
@@ -428,15 +375,13 @@ func NewClient(conn *websocket.Conn) *Client {
     }
 }
 
-// ReadPump lê mensagens da conexão WebSocket
 func (c *Client) ReadPump(messageHandler func(*Client, []byte)) {
     defer func() {
         c.Conn.Close()
     }()
 
-    c.Conn.SetReadLimit(4096) // Tamanho máximo de mensagem permitido
+    c.Conn.SetReadLimit(4096) 
 
-    // Configura parâmetros WebSocket
     _ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
     c.Conn.SetPongHandler(func(string) error {
         _ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
@@ -458,7 +403,6 @@ func (c *Client) ReadPump(messageHandler func(*Client, []byte)) {
     }
 }
 
-// WritePump escreve mensagens na conexão WebSocket
 func (c *Client) WritePump() {
     ticker := time.NewTicker(30 * time.Second)
     defer func() {
@@ -471,19 +415,15 @@ func (c *Client) WritePump() {
         case message, ok := <-c.SendCh:
             _ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
             if !ok {
-                // Canal foi fechado
                 _ = c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
                 return
             }
-
-            // Envia mensagem como JSON
             if err := c.Conn.WriteJSON(message); err != nil {
                 log.Printf("Erro de escrita WebSocket: %v", err)
                 return
             }
 
         case <-ticker.C:
-            // Mantém a conexão viva com um ping periódico
             _ = c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
             if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
                 return
@@ -492,12 +432,10 @@ func (c *Client) WritePump() {
     }
 }
 
-// Send envia uma mensagem para o cliente (usando o canal SendCh)
 func (c *Client) Send(message map[string]interface{}) {
     select {
     case c.SendCh <- message:
     default:
-        // Canal está cheio, cliente pode estar lento
         log.Printf("Canal de envio do cliente %s cheio, descartando mensagem", c.ID)
     }
 }

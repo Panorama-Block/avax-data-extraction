@@ -1,11 +1,11 @@
 package config
 
 import (
-    "log"
-    "os"
-    "strconv"
+	"log"
+	"os"
+	"strconv"
 
-    "github.com/joho/godotenv"
+	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -37,7 +37,7 @@ type Config struct {
 func LoadConfig() *Config {
     err := godotenv.Load(".env")
     if err != nil {
-        log.Println("Aviso: .env não encontrado, usando variáveis de ambiente do sistema")
+        log.Println("WARN: .env não encontrado")
     }
 
     workers, err := strconv.Atoi(os.Getenv("WORKERS"))
@@ -55,6 +55,7 @@ func LoadConfig() *Config {
         APIUrl:                 os.Getenv("API_URL"),
         APIKey:                 os.Getenv("API_KEY"),
         ChainWsUrl:             os.Getenv("CHAIN_WS_URL"),
+
         KafkaBroker:            os.Getenv("KAFKA_BROKER"),
         KafkaTopicChains:       os.Getenv("KAFKA_TOPIC_CHAINS"),
         KafkaTopicBlocks:       os.Getenv("KAFKA_TOPIC_BLOCKS"),
@@ -64,7 +65,6 @@ func LoadConfig() *Config {
         KafkaTopicERC721:       os.Getenv("KAFKA_TOPIC_ERC721"),
         KafkaTopicERC1155:      os.Getenv("KAFKA_TOPIC_ERC1155"),
         KafkaTopicMetrics:      os.Getenv("KAFKA_TOPIC_METRICS"),
-
         KafkaTopicSubnets:     os.Getenv("KAFKA_TOPIC_SUBNETS"),
         KafkaTopicBlockchains: os.Getenv("KAFKA_TOPIC_BLOCKCHAINS"),
         KafkaTopicValidators:  os.Getenv("KAFKA_TOPIC_VALIDATORS"),

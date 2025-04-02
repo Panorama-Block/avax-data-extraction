@@ -65,31 +65,25 @@ func (c *Client) GetStakingMetrics(networkOrChainID string) (*types.StakingMetri
     return &result.Result, nil
 }
 
-// MetricsAPI para gerenciar chamadas de API relacionadas a métricas
 type MetricsAPI struct {
     client *Client
 }
 
-// NewMetricsAPI cria um novo cliente MetricsAPI
 func NewMetricsAPI(client *Client) *MetricsAPI {
     return &MetricsAPI{
         client: client,
     }
 }
-
-// MetricDataPoint representa um único ponto de dados em uma série temporal
 type MetricDataPoint struct {
     Timestamp int64       `json:"timestamp"`
     Value     json.Number `json:"value"`
 }
 
-// MetricsResponse é a resposta geral para endpoints de métricas
 type MetricsResponse struct {
     Results []MetricDataPoint `json:"results"`
     NextPageToken string `json:"nextPageToken,omitempty"`
 }
 
-// TimeInterval representa a granularidade dos dados de métricas
 type TimeInterval string
 
 const (
@@ -99,7 +93,6 @@ const (
     TimeIntervalMonth TimeInterval = "month"
 )
 
-// MetricsParams representa parâmetros para requisições de API de métricas
 type MetricsParams struct {
     StartTimestamp int64
     EndTimestamp   int64
@@ -108,7 +101,6 @@ type MetricsParams struct {
     PageToken      string
 }
 
-// ToQueryParams converte MetricsParams para parâmetros de consulta URL
 func (p *MetricsParams) ToQueryParams() url.Values {
     params := url.Values{}
     if p.StartTimestamp > 0 {
@@ -129,22 +121,18 @@ func (p *MetricsParams) ToQueryParams() url.Values {
     return params
 }
 
-// EVMChainMetric representa as métricas disponíveis para chains EVM
 type EVMChainMetric string
 
 const (
-    // Métricas de atividade da chain
     ActiveAddresses    EVMChainMetric = "activeAddresses"
     ActiveSenders      EVMChainMetric = "activeSenders"
     TxCount            EVMChainMetric = "txCount"
     
-    // Métricas cumulativas
     CumulativeAddresses  EVMChainMetric = "cumulativeAddresses"
     CumulativeTxCount    EVMChainMetric = "cumulativeTxCount"
     CumulativeContracts  EVMChainMetric = "cumulativeContracts"
     CumulativeDeployers  EVMChainMetric = "cumulativeDeployers"
     
-    // Métricas de gás e desempenho
     GasUsed            EVMChainMetric = "gasUsed"
     AvgGps             EVMChainMetric = "avgGps"
     MaxGps             EVMChainMetric = "maxGps"
@@ -155,7 +143,6 @@ const (
     FeesPaid           EVMChainMetric = "feesPaid"
 )
 
-// GetEVMChainMetrics recupera métricas para uma chain compatível com EVM
 func (m *MetricsAPI) GetEVMChainMetrics(chainID string, metric EVMChainMetric, params *MetricsParams) (*MetricsResponse, error) {
     queryParams := url.Values{}
     if params != nil {

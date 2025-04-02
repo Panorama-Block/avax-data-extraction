@@ -1,6 +1,5 @@
 package types
 
-// Webhook
 type WebhookEvent struct {
     WebhookID string `json:"webhookId"`
     EventType string `json:"eventType"`
@@ -26,7 +25,6 @@ type Block struct {
     CumulativeTransactions string `json:"cumulativeTransactions"`
 }
 
-// AddressInfo - descreve o objeto "from" / "to"
 type AddressInfo struct {
     Name     string `json:"name"`
     Symbol   string `json:"symbol"`
@@ -70,7 +68,6 @@ type Transaction struct {
     Logs                     []Log               `json:"logs"`
 }
 
-// ERC20
 type ERC20Transfer struct {
     TransactionHash string `json:"transactionHash"`
     Type            string `json:"type"`
@@ -88,7 +85,6 @@ type ERC20Transfer struct {
     } `json:"erc20Token"`
 }
 
-// ERC721
 type ERC721Transfer struct {
     TransactionHash string `json:"transactionHash"`
     Type            string `json:"type"`
@@ -104,7 +100,6 @@ type ERC721Transfer struct {
     } `json:"erc721Token"`
 }
 
-// ERC1155
 type ERC1155Transfer struct {
     TransactionHash string `json:"transactionHash"`
     Type            string `json:"type"`
@@ -121,7 +116,6 @@ type ERC1155Transfer struct {
     } `json:"erc1155Token"`
 }
 
-// InternalTransaction
 type InternalTransaction struct {
     From            string `json:"from"`
     To              string `json:"to"`
@@ -132,7 +126,6 @@ type InternalTransaction struct {
     TransactionHash string `json:"transactionHash"`
 }
 
-// Log
 type Log struct {
     Address          string  `json:"address"`
     Topic0           string  `json:"topic0"`
@@ -145,7 +138,6 @@ type Log struct {
     Removed          bool    `json:"removed"`
 }
 
-// Chain
 type Chain struct {
     ChainID         string   `json:"chainId"`
     Status          string   `json:"status"`
@@ -171,7 +163,6 @@ type Chain struct {
     } `json:"networkToken"`
 }
 
-// Validator / Delegator
 type Validator struct {
     NodeID      string `json:"nodeId"`
     StartTime   int64  `json:"startTime"`
@@ -189,7 +180,6 @@ type Delegator struct {
     RewardAddress string `json:"rewardAddress"`
 }
 
-// Subnet / Blockchain
 type Subnet struct {
     SubnetID    string       `json:"subnetId"`
     Blockchains []Blockchain `json:"blockchains"`
@@ -201,7 +191,6 @@ type Blockchain struct {
     SubnetID     string `json:"subnetId"`
 }
 
-// TeleporterTx
 type TeleporterTx struct {
     ID          string `json:"id"`
     SourceChain string `json:"sourceChain"`
@@ -213,14 +202,12 @@ type TeleporterTx struct {
     Status      string `json:"status"`
 }
 
-// Metrics
 type StakingMetrics struct {
     ValidatorCount int     `json:"validatorCount"`
     DelegatorCount int     `json:"delegatorCount"`
     TotalStaked    float64 `json:"totalStaked"`
 }
 
-// TokenInfo - retorno de GetTokenDetails
 type TokenInfo struct {
     Address           string `json:"address"`
     Name              string `json:"name"`

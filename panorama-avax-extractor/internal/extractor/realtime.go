@@ -26,12 +26,10 @@ type RealTimeExtractor struct {
     chainID       string
     chainName     string
     
-    // Canais de controle
     blocksCh      chan *newHeadsData
     errorCh       chan error
     stop          chan struct{}
-    
-    // Estado em execução
+
     mutex         sync.Mutex
     conn          *websocket.Conn
     subID         string
@@ -39,7 +37,6 @@ type RealTimeExtractor struct {
     lastProcessedBlock uint64
 }
 
-// NewRealTimeExtractor cria um novo extrator em tempo real
 func NewRealTimeExtractor(
     dataAPI *api.DataAPI,
     kafkaProducer *kafka.Producer,
@@ -54,13 +51,12 @@ func NewRealTimeExtractor(
         chainID:       chainID,
         chainName:     chainName,
         
-        blocksCh:      make(chan *newHeadsData, 100),
+        blocksCh:      make(chan *newHeadsData, 256),
         errorCh:       make(chan error, 10),
         stop:          make(chan struct{}),
     }
 }
 
-// Start inicia o processo de extração em tempo real
 func (r *RealTimeExtractor) Start(ctx context.Context) error {
     r.mutex.Lock()
     if r.running {
@@ -79,7 +75,6 @@ func (r *RealTimeExtractor) Start(ctx context.Context) error {
         return fmt.Errorf("falha ao conectar ao WebSocket: %v", err)
     }
     
-    // Enviar requisição de subscrição para newHeads
     subReq := map[string]interface{}{
         "jsonrpc": "2.0",
         "id":      1,
@@ -92,14 +87,12 @@ func (r *RealTimeExtractor) Start(ctx context.Context) error {
         return fmt.Errorf("falha ao enviar requisição de subscrição: %v", err)
     }
     
-    // Iniciar goroutines
     go r.readMessages(ctx)
     go r.processBlocks(ctx)
     
     return nil
 }
 
-// Stop interrompe o extrator em tempo real
 func (r *RealTimeExtractor) Stop() {
     r.mutex.Lock()
     if !r.running {
@@ -109,10 +102,8 @@ func (r *RealTimeExtractor) Stop() {
     r.running = false
     r.mutex.Unlock()
     
-    // Fechar canal de parada para sinalizar às goroutines
     close(r.stop)
     
-    // Fechar conexão WebSocket
     if r.conn != nil {
         r.conn.Close()
     }
@@ -120,7 +111,6 @@ func (r *RealTimeExtractor) Stop() {
     log.Printf("Extrator em tempo real para chain %s parado", r.chainName)
 }
 
-// readMessages lê mensagens da conexão WebSocket
 func (r *RealTimeExtractor) readMessages(ctx context.Context) {
     defer func() {
         if r.conn != nil {
@@ -133,7 +123,6 @@ func (r *RealTimeExtractor) readMessages(ctx context.Context) {
         case <-r.stop:
             return
         default:
-            // Lê a próxima mensagem
             _, message, err := r.conn.ReadMessage()
             if err != nil {
                 select {
@@ -142,7 +131,6 @@ func (r *RealTimeExtractor) readMessages(ctx context.Context) {
                     return
                 }
                 
-                // Tentar reconectar após erro
                 time.Sleep(5 * time.Second)
                 if err := r.reconnect(); err != nil {
                     log.Printf("Falha ao reconectar: %v", err)
@@ -151,7 +139,6 @@ func (r *RealTimeExtractor) readMessages(ctx context.Context) {
                 continue
             }
             
-            // Processa a mensagem
             var wsMsg struct {
                 JSONRPC string `json:"jsonrpc"`
                 ID      *int   `json:"id,omitempty"`
@@ -168,7 +155,6 @@ func (r *RealTimeExtractor) readMessages(ctx context.Context) {
                 continue
             }
             
-            // Verifica se é resposta à subscrição
             if wsMsg.ID != nil && wsMsg.Result != "" {
                 r.mutex.Lock()
                 r.subID = wsMsg.Result
@@ -176,14 +162,11 @@ func (r *RealTimeExtractor) readMessages(ctx context.Context) {
                 log.Printf("Subscrição newHeads confirmada: %s", wsMsg.Result)
                 continue
             }
-            
-            // Verifica se é notificação de novo bloco
             if wsMsg.Method == "eth_subscription" && wsMsg.Params != nil && wsMsg.Params.Result.Hash != "" {
                 blockHash := wsMsg.Params.Result.Hash
                 log.Printf("Novo cabeçalho de bloco recebido: hash=%s número=%s", 
                     blockHash, wsMsg.Params.Result.Number)
                 
-                // Envia para o canal de blocos
                 select {
                 case r.blocksCh <- &wsMsg.Params.Result:
                 case <-r.stop:
@@ -194,49 +177,36 @@ func (r *RealTimeExtractor) readMessages(ctx context.Context) {
     }
 }
 
-// processBlocks processa os blocos recebidos
 func (r *RealTimeExtractor) processBlocks(ctx context.Context) {
     for {
         select {
         case <-r.stop:
             return
         case blockHeader := <-r.blocksCh:
-            // Pequeno atraso para garantir que o bloco esteja disponível na API
-            time.Sleep(800 * time.Millisecond)
-            
+            // time.Sleep(800 * time.Millisecond)
             log.Printf("Processando bloco: hash=%s", blockHeader.Hash)
             
-            // Busca detalhes do bloco na API
             block, err := r.dataAPI.GetBlockByNumberOrHash(r.chainID, blockHeader.Hash)
             if err != nil {
                 log.Printf("Erro ao buscar detalhes do bloco %s: %v", blockHeader.Hash, err)
                 continue
             }
             
-            // Garante que o chainID está definido
             block.ChainID = r.chainID
-            
-            // Publica o bloco no Kafka
             r.kafkaProducer.PublishBlock(*block)
         }
     }
 }
 
-// reconnect tenta reconectar ao WebSocket e reinscrever-se
 func (r *RealTimeExtractor) reconnect() error {
-    // Fechar conexão existente
     if r.conn != nil {
         r.conn.Close()
     }
-    
-    // Reconectar
     var err error
     r.conn, _, err = websocket.DefaultDialer.Dial(r.wsEndpoint, nil)
     if err != nil {
         return fmt.Errorf("falha ao reconectar ao WebSocket: %v", err)
     }
-    
-    // Reenviar requisição de subscrição
     subReq := map[string]interface{}{
         "jsonrpc": "2.0",
         "id":      1,

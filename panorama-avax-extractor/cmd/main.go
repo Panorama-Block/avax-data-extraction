@@ -18,24 +18,18 @@ import (
 )
 
 func main() {
-	// Carregar configuração
 	cfg := config.LoadConfig()
 	
-	// Criar cliente API
 	client := api.NewClient(cfg.APIUrl, cfg.APIKey)
 	
-	// Inicializar APIs específicas
 	dataAPI := api.NewDataAPI(client)
 	metricsAPI := api.NewMetricsAPI(client)
 	
-	// Criar produtor Kafka
 	producer := kafka.NewProducer(cfg)
 	
-	// Criar contexto que pode ser cancelado
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	
-	// Iniciar servidor WebSocket (opcional, se configurado)
 	if cfg.WebSocketPort != "" {
 		consumer, err := kafka.NewConsumer(cfg.KafkaBroker, "websocket-group", nil)
 		if err != nil {
@@ -51,20 +45,14 @@ func main() {
 		defer wsServer.Stop(ctx)
 	}
 	
-	// Canal para eventos do webhook
 	eventChan := make(chan types.WebhookEvent, 100)
-	
-	// Iniciar servidor webhook
 	wh := webhook.NewWebhookServer(eventChan, cfg.WebhookPort)
 	go wh.Start()
 	
-	// Iniciar pipeline de processamento de transações
-	transactionPipeline := extractor.NewTransactionPipeline(dataAPI, producer, cfg.Workers, 100)
+	transactionPipeline := extractor.NewTransactionPipeline(dataAPI, producer, cfg.Workers, 256)
 	if err := transactionPipeline.Start(ctx); err != nil {
 		log.Fatalf("Erro ao iniciar pipeline de transações: %v", err)
 	}
-	
-	// Iniciar worker para processar eventos do webhook
 	go func() {
 		for evt := range eventChan {
 			if err := transactionPipeline.Submit(evt); err != nil {
@@ -73,7 +61,7 @@ func main() {
 		}
 	}()
 	
-	// Iniciar extração em tempo real de blocos via WebSocket
+
 	rtExtractor := extractor.NewRealTimeExtractor(dataAPI, producer, cfg.ChainWsUrl, "43114", "Avalanche C-Chain")
 	if err := rtExtractor.Start(ctx); err != nil {
 		log.Printf("Erro ao iniciar extrator em tempo real: %v", err)

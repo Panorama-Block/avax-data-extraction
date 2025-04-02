@@ -9,7 +9,6 @@ import (
     "github.com/stretchr/testify/assert"
 )
 
-// Simulação do servidor HTTP para testes
 func TestGetChains(t *testing.T) {
     mockResponse := `{
         "chains": [
