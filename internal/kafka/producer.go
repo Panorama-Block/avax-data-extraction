@@ -19,6 +19,12 @@ type Producer struct {
     TopicERC721          string
     TopicERC1155         string
     TopicMetrics         string
+    
+    // New specific metrics topics
+    TopicActivityMetrics    string
+    TopicPerformanceMetrics string
+    TopicGasMetrics         string
+    TopicCumulativeMetrics  string
 
     TopicSubnets     string
     TopicBlockchains string
@@ -44,6 +50,12 @@ func NewProducer(cfg *config.Config) *Producer {
         TopicERC721:       cfg.KafkaTopicERC721,
         TopicERC1155:      cfg.KafkaTopicERC1155,
         TopicMetrics:      cfg.KafkaTopicMetrics,
+        
+        // Initialize specific metrics topics
+        TopicActivityMetrics:    cfg.KafkaTopicActivityMetrics,
+        TopicPerformanceMetrics: cfg.KafkaTopicPerformanceMetrics,
+        TopicGasMetrics:         cfg.KafkaTopicGasMetrics,
+        TopicCumulativeMetrics:  cfg.KafkaTopicCumulativeMetrics,
 
         TopicSubnets:     cfg.KafkaTopicSubnets,
         TopicBlockchains: cfg.KafkaTopicBlockchains,
@@ -150,4 +162,21 @@ func (p *Producer) PublishBridgeTx(tx types.TeleporterTx) {
 
 func (p *Producer) Close() {
     p.Producer.Close()
+}
+
+// New methods for specific metric types
+func (p *Producer) PublishActivityMetrics(data []byte) {
+    p.sendMessage(p.TopicActivityMetrics, data)
+}
+
+func (p *Producer) PublishPerformanceMetrics(data []byte) {
+    p.sendMessage(p.TopicPerformanceMetrics, data)
+}
+
+func (p *Producer) PublishGasMetrics(data []byte) {
+    p.sendMessage(p.TopicGasMetrics, data)
+}
+
+func (p *Producer) PublishCumulativeMetrics(data []byte) {
+    p.sendMessage(p.TopicCumulativeMetrics, data)
 }

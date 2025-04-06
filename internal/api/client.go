@@ -7,13 +7,69 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 )
 
+// RateLimiter implements a token bucket rate limiter
+type RateLimiter struct {
+	rate       float64     // tokens per second
+	burst      int         // maximum bucket size
+	mu         sync.Mutex  // mutex for thread safety
+	tokens     float64     // current token count
+	lastRefill time.Time   // last time tokens were added
+}
+
+// NewRateLimiter creates a new rate limiter with the given rate and burst limit
+func NewRateLimiter(rate float64, burst int) *RateLimiter {
+	return &RateLimiter{
+		rate:       rate,
+		burst:      burst,
+		tokens:     float64(burst),
+		lastRefill: time.Now(),
+	}
+}
+
+// Wait blocks until a token is available
+func (r *RateLimiter) Wait() {
+	for {
+		if r.TryAcquire() {
+			return
+		}
+		// Sleep a little bit before trying again
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TryAcquire attempts to acquire a token, returns true if successful
+func (r *RateLimiter) TryAcquire() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	
+	now := time.Now()
+	elapsed := now.Sub(r.lastRefill).Seconds()
+	
+	// Add tokens based on elapsed time
+	r.tokens = r.tokens + elapsed*r.rate
+	if r.tokens > float64(r.burst) {
+		r.tokens = float64(r.burst)
+	}
+	
+	r.lastRefill = now
+	
+	if r.tokens >= 1 {
+		r.tokens--
+		return true
+	}
+	
+	return false
+}
+
 type Client struct {
-    BaseURL    string
-    APIKey     string
-    HTTPClient *http.Client
+    BaseURL     string
+    APIKey      string
+    HTTPClient  *http.Client
+    RateLimiter *RateLimiter
 }
 
 func NewClient(baseURL, apiKey string) *Client {
@@ -23,12 +79,22 @@ func NewClient(baseURL, apiKey string) *Client {
         HTTPClient: &http.Client{
             Timeout: 10 * time.Second,
         },
+        // Default rate limiter: 5 requests per second with burst of 10
+        RateLimiter: NewRateLimiter(5, 10),
     }
+}
+
+// SetRateLimits allows configuring the rate limits
+func (c *Client) SetRateLimits(ratePerSecond float64, burst int) {
+    c.RateLimiter = NewRateLimiter(ratePerSecond, burst)
 }
 
 func (c *Client) makeRequest(endpoint string) ([]byte, error) {
     fullURL := c.BaseURL + endpoint
     log.Printf("[DEBUG] makeRequest => %s", fullURL)
+
+    // Wait for rate limiter to allow the request
+    c.RateLimiter.Wait()
 
     req, err := http.NewRequest("GET", fullURL, nil)
     if err != nil {
@@ -42,6 +108,20 @@ func (c *Client) makeRequest(endpoint string) ([]byte, error) {
         return nil, err
     }
     defer resp.Body.Close()
+
+    if resp.StatusCode == http.StatusTooManyRequests {
+        // Implement retry with backoff for 429 errors
+        retryAfter := 1 * time.Second
+        if retryHeaderValue := resp.Header.Get("Retry-After"); retryHeaderValue != "" {
+            if seconds, err := strconv.Atoi(retryHeaderValue); err == nil {
+                retryAfter = time.Duration(seconds) * time.Second
+            }
+        }
+        
+        log.Printf("[makeRequest] Rate limited. Retrying after %v", retryAfter)
+        time.Sleep(retryAfter)
+        return c.makeRequest(endpoint) // Recursive retry
+    }
 
     if resp.StatusCode != http.StatusOK {
         bodyBytes, _ := io.ReadAll(resp.Body)
@@ -60,6 +140,9 @@ func (c *Client) SendRequest(method, path string, queryParams url.Values, body i
         fullURL.RawQuery = queryParams.Encode()
     }
 
+    // Wait for rate limiter to allow the request
+    c.RateLimiter.Wait()
+
     req, err := http.NewRequest(method, fullURL.String(), body)
     if err != nil {
         return nil, fmt.Errorf("erro ao criar requisição: %w", err)
@@ -73,6 +156,20 @@ func (c *Client) SendRequest(method, path string, queryParams url.Values, body i
         return nil, fmt.Errorf("erro ao enviar requisição: %w", err)
     }
     defer resp.Body.Close()
+    
+    if resp.StatusCode == http.StatusTooManyRequests {
+        // Implement retry with backoff for 429 errors
+        retryAfter := 1 * time.Second
+        if retryHeaderValue := resp.Header.Get("Retry-After"); retryHeaderValue != "" {
+            if seconds, err := strconv.Atoi(retryHeaderValue); err == nil {
+                retryAfter = time.Duration(seconds) * time.Second
+            }
+        }
+        
+        log.Printf("[SendRequest] Rate limited. Retrying after %v", retryAfter)
+        time.Sleep(retryAfter)
+        return c.SendRequest(method, path, queryParams, body) // Recursive retry
+    }
 
     respBody, err := io.ReadAll(resp.Body)
     if err != nil {

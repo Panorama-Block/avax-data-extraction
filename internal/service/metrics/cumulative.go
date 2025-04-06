@@ -117,7 +117,7 @@ func (s *CumulativeService) collectChainCumulativeMetrics(ctx context.Context, c
 		TotalFeesCollected:  25000.0,        // Example value
 	}
 	
-	// Publish metrics event
+	// Publish metrics event to cumulative metrics topic
 	event := types.CumulativeMetricsEvent{
 		Type:    types.EventCumulativeMetricsUpdated,
 		Metrics: metrics,

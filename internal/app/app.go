@@ -51,18 +51,18 @@ func (s *MockWebhookServer) Stop() {
 
 // App represents the main application
 type App struct {
-	config        *config.Config
-	api           *api.API
-	eventManager  *event.Manager
-	kafkaProducer *kafka.EventProducer
-	services      []Service
-	wsServer      *websocket.Server
-	whServer      *MockWebhookServer
-	context       context.Context
-	cancelFunc    context.CancelFunc
-	running       bool
-	runningMutex  sync.Mutex
-	mockMode      bool
+	config               *config.Config
+	api                  *api.API
+	eventManager         *event.Manager
+	kafkaProducer        *kafka.EventProducer
+	wsServer             *websocket.Server
+	whServer             *MockWebhookServer
+	services             []Service
+	context              context.Context
+	cancelFunc           context.CancelFunc
+	mockMode             bool
+	running              bool
+	runningMutex         sync.Mutex
 }
 
 // Service interface for all services
@@ -77,23 +77,20 @@ type Service interface {
 func NewApp(cfg *config.Config) *App {
 	ctx, cancel := context.WithCancel(context.Background())
 	
-	// Initialize API
-	avalancheAPI := api.NewAPI(cfg.APIUrl, cfg.APIKey)
+	// Use the rate-limited API client with configuration
+	apiClient := api.NewAPIWithConfig(cfg)
 	
-	// Initialize Event Manager
 	eventManager := event.NewManager(cfg.Workers, 10000)
 	
-	app := &App{
+	return &App{
 		config:       cfg,
-		api:          avalancheAPI,
+		api:          apiClient,
 		eventManager: eventManager,
-		services:     make([]Service, 0),
+		services:     []Service{},
 		context:      ctx,
 		cancelFunc:   cancel,
-		mockMode:     true,  // Enable mock mode for demonstration
+		mockMode:     true,
 	}
-	
-	return app
 }
 
 // mockEventProcessor is a simple processor that prints events instead of sending to Kafka
@@ -315,12 +312,14 @@ func (a *App) setupTopicMappings() {
 	a.kafkaProducer.RegisterTopicMapping(types.EventTokenCreated, a.config.KafkaTopicMetrics)
 	a.kafkaProducer.RegisterTopicMapping(types.EventTokenUpdated, a.config.KafkaTopicMetrics)
 	
-	// Map the new metrics event types to the metrics Kafka topic
+	// Map general metrics events to the default metrics topic
 	a.kafkaProducer.RegisterTopicMapping(types.EventMetricsUpdated, a.config.KafkaTopicMetrics)
-	a.kafkaProducer.RegisterTopicMapping(types.EventActivityMetricsUpdated, a.config.KafkaTopicMetrics)
-	a.kafkaProducer.RegisterTopicMapping(types.EventPerformanceMetricsUpdated, a.config.KafkaTopicMetrics)
-	a.kafkaProducer.RegisterTopicMapping(types.EventGasMetricsUpdated, a.config.KafkaTopicMetrics)
-	a.kafkaProducer.RegisterTopicMapping(types.EventCumulativeMetricsUpdated, a.config.KafkaTopicMetrics)
+	
+	// Map specific metrics event types to their dedicated Kafka topics
+	a.kafkaProducer.RegisterTopicMapping(types.EventActivityMetricsUpdated, a.config.KafkaTopicActivityMetrics)
+	a.kafkaProducer.RegisterTopicMapping(types.EventPerformanceMetricsUpdated, a.config.KafkaTopicPerformanceMetrics)
+	a.kafkaProducer.RegisterTopicMapping(types.EventGasMetricsUpdated, a.config.KafkaTopicGasMetrics)
+	a.kafkaProducer.RegisterTopicMapping(types.EventCumulativeMetricsUpdated, a.config.KafkaTopicCumulativeMetrics)
 }
 
 // Start starts the application

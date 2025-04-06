@@ -169,6 +169,7 @@ func (m *MetricsPipeline) collectStakingMetrics(ctx context.Context) error {
     if err != nil {
         return fmt.Errorf("erro ao serializar métricas de staking: %w", err)
     }
+    
     m.kafkaProducer.PublishMetrics(data)
     
     return nil
@@ -198,6 +199,7 @@ func (m *MetricsPipeline) collectTeleporterMetrics(ctx context.Context) error {
             log.Printf("Erro ao serializar métrica teleporter %s: %v", metric, err)
             continue
         }
+        
         m.kafkaProducer.PublishMetrics(data)
     }
     
@@ -245,7 +247,20 @@ func (m *MetricsPipeline) collectChainSpecificMetrics(ctx context.Context, chain
                 continue
             }
             
-            m.kafkaProducer.PublishMetrics(data)
+            switch metric {
+            case api.ActiveAddresses, api.TxCount:
+                // Activity metrics go to the activity metrics topic
+                m.kafkaProducer.PublishActivityMetrics(data)
+            case api.AvgTps:
+                // Performance metrics go to the performance metrics topic
+                m.kafkaProducer.PublishPerformanceMetrics(data)
+            case api.AvgGasPrice, api.FeesPaid:
+                // Gas-related metrics go to the gas metrics topic
+                m.kafkaProducer.PublishGasMetrics(data)
+            default:
+                // Default metrics topic for any other metrics
+                m.kafkaProducer.PublishMetrics(data)
+            }
         }
     }
     

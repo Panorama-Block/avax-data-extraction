@@ -115,7 +115,7 @@ func (s *ActivityService) collectChainActivityMetrics(ctx context.Context, chain
 		UniqueContracts: 50,   // Example value
 	}
 	
-	// Publish metrics event
+	// Publish metrics event to activity metrics topic
 	event := types.ActivityMetricsEvent{
 		Type:    types.EventActivityMetricsUpdated,
 		Metrics: metrics,

@@ -112,7 +112,7 @@ func (s *GasService) collectChainGasMetrics(ctx context.Context, chainID string,
 		GasEfficiency: 0.75,         // Example value (75% efficiency)
 	}
 	
-	// Publish metrics event
+	// Publish metrics event to gas metrics topic
 	event := types.GasMetricsEvent{
 		Type:    types.EventGasMetricsUpdated,
 		Metrics: metrics,

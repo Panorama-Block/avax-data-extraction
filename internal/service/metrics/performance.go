@@ -115,7 +115,7 @@ func (s *PerformanceService) collectChainPerformanceMetrics(ctx context.Context,
 		AvgLatency: 5.0,   // Example value (seconds)
 	}
 	
-	// Publish metrics event
+	// Publish metrics event to performance metrics topic
 	event := types.PerformanceMetricsEvent{
 		Type:    types.EventPerformanceMetricsUpdated,
 		Metrics: metrics,
