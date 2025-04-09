@@ -1,406 +1,221 @@
 package extractor
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"sync"
-	"time"
-	
-	"github.com/Panorama-Block/avax/internal/api"
-	"github.com/Panorama-Block/avax/internal/kafka"
+    "context"
+    "fmt"
+    "log"
+    "sync"
+    "time"
+    
+    "github.com/Panorama-Block/avax/internal/api"
+    "github.com/Panorama-Block/avax/internal/kafka"
+    "github.com/Panorama-Block/avax/internal/types"
 )
 
-// ChainPipeline handles extraction of chain-level data
+// ChainPipeline gerencia a extração de dados no nível de cadeia
 type ChainPipeline struct {
-	dataAPI       *api.DataAPI
-	metrics       *api.MetricsAPI
-	kafkaProducer *kafka.Producer
-	
-	// Configuration 
-	network       string           // "mainnet", "fuji", etc.
-	chains        []string         // List of chainIDs to monitor
-	interval      time.Duration    // How often to fetch chain data
-	
-	// Control
-	stop          chan struct{}
-	mutex         sync.Mutex
-	running       bool
+    dataAPI       *api.DataAPI
+    metricsAPI    *api.MetricsAPI
+    kafkaProducer *kafka.Producer
+    
+    // Configuração 
+    network       string           // "mainnet", "fuji", etc.
+    interval      time.Duration    // Com que frequência buscar dados da cadeia
+    
+    // Controle
+    stop          chan struct{}
+    mutex         sync.Mutex
+    running       bool
 }
 
-// NewChainPipeline creates a new chain data pipeline
+// NewChainPipeline cria um novo pipeline de dados de cadeia
 func NewChainPipeline(
-	dataAPI *api.DataAPI,
-	metrics *api.MetricsAPI,
-	kafkaProducer *kafka.Producer,
-	network string,
-	interval time.Duration,
+    dataAPI *api.DataAPI,
+    metricsAPI *api.MetricsAPI,
+    kafkaProducer *kafka.Producer,
+    network string,
+    interval time.Duration,
 ) *ChainPipeline {
-	return &ChainPipeline{
-		dataAPI:       dataAPI,
-		metrics:       metrics, 
-		kafkaProducer: kafkaProducer,
-		network:       network,
-		interval:      interval,
-		stop:          make(chan struct{}),
-	}
+    return &ChainPipeline{
+        dataAPI:       dataAPI,
+        metricsAPI:    metricsAPI, 
+        kafkaProducer: kafkaProducer,
+        network:       network,
+        interval:      interval,
+        stop:          make(chan struct{}),
+    }
 }
 
-// Start begins the chain data extraction process
+// Start inicia o processo de extração de dados de cadeia
 func (c *ChainPipeline) Start(ctx context.Context) error {
-	c.mutex.Lock()
-	if c.running {
-		c.mutex.Unlock()
-		return fmt.Errorf("chain pipeline already running")
-	}
-	c.running = true
-	c.mutex.Unlock()
-	
-	log.Printf("Starting chain data pipeline for network: %s", c.network)
-	
-	// First fetch the list of chains to monitor
-	if err := c.fetchChains(ctx); err != nil {
-		return fmt.Errorf("failed to fetch chains: %w", err)
-	}
-	
-	// Run initial extraction
-	if err := c.extractChainData(ctx); err != nil {
-		log.Printf("Warning: Initial chain data extraction failed: %v", err)
-		// Continue anyway as this is just the initial run
-	}
-	
-	// Start the periodic extraction
-	go c.runPeriodic(ctx)
-	
-	return nil
+    c.mutex.Lock()
+    if c.running {
+        c.mutex.Unlock()
+        return fmt.Errorf("pipeline de cadeia já está em execução")
+    }
+    c.running = true
+    c.mutex.Unlock()
+    
+    log.Printf("Iniciando pipeline de dados de cadeia para rede: %s", c.network)
+    
+    // Executa a extração inicial
+    if err := c.extractChainData(ctx); err != nil {
+        log.Printf("Aviso: Extração inicial de dados de cadeia falhou: %v", err)
+        // Continua mesmo assim, pois é apenas a execução inicial
+    }
+    
+    // Inicia a extração periódica
+    go c.runPeriodic(ctx)
+    
+    return nil
 }
 
-// Stop halts the chain data extraction process
+// Stop interrompe o processo de extração de dados de cadeia
 func (c *ChainPipeline) Stop() {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	
-	if !c.running {
-		return
-	}
-	
-	close(c.stop)
-	c.running = false
-	log.Printf("Stopping chain data pipeline")
+    c.mutex.Lock()
+    defer c.mutex.Unlock()
+    
+    if !c.running {
+        return
+    }
+    
+    close(c.stop)
+    c.running = false
+    log.Printf("Interrompendo pipeline de dados de cadeia")
 }
 
-// fetchChains fetches and stores the list of chains to monitor
-func (c *ChainPipeline) fetchChains(ctx context.Context) error {
-	// Get the list of chains from the API
-	chainsResp, err := c.dataAPI.GetChains(c.network, &api.PaginationParams{
-		PageSize:  100, // Adjust as needed
-		SortOrder: "asc",
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get chains: %w", err)
-	}
-	
-	chains := make([]string, 0, len(chainsResp.Chains))
-	for _, chain := range chainsResp.Chains {
-		chains = append(chains, chain.ChainID)
-		
-		// Publish chain information to Kafka
-		chainData := map[string]interface{}{
-			"chainId":        chain.ChainID,
-			"name":           chain.Name,
-			"network":        chain.Network,
-			"isTestnet":      chain.IsTestnet,
-			"isSubnet":       chain.IsSubnet,
-			"isL1":           chain.IsL1,
-			"subnetId":       chain.SubnetID,
-			"nativeCurrency": chain.NativeCurrency,
-			"rpcUrl":         chain.RpcURL,
-			"explorerUrl":    chain.ExplorerURL,
-			"updateTime":     time.Now().Unix(),
-		}
-		
-		chainDataJSON, err := json.Marshal(chainData)
-		if err != nil {
-			log.Printf("Error marshaling chain data: %v", err)
-			continue
-		}
-		
-		if err := c.kafkaProducer.PublishChainInfo(chain.ChainID, chainDataJSON); err != nil {
-			log.Printf("Error publishing chain info to Kafka: %v", err)
-			// Continue anyway
-		}
-	}
-	
-	c.chains = chains
-	log.Printf("Found %d chains in network %s", len(chains), c.network)
-	
-	return nil
-}
-
-// runPeriodic runs the chain data extraction process periodically
+// runPeriodic executa o processo de extração de dados de cadeia periodicamente
 func (c *ChainPipeline) runPeriodic(ctx context.Context) {
-	ticker := time.NewTicker(c.interval)
-	defer ticker.Stop()
-	
-	for {
-		select {
-		case <-c.stop:
-			return
-		case <-ticker.C:
-			if err := c.extractChainData(ctx); err != nil {
-				log.Printf("Error extracting chain data: %v", err)
-				// Continue with the next interval
-			}
-		}
-	}
+    ticker := time.NewTicker(c.interval)
+    defer ticker.Stop()
+    
+    for {
+        select {
+        case <-c.stop:
+            return
+        case <-ticker.C:
+            if err := c.extractChainData(ctx); err != nil {
+                log.Printf("Erro ao extrair dados de cadeia: %v", err)
+                // Continua com o próximo intervalo
+            }
+        }
+    }
 }
 
-// extractChainData extracts and processes chain data
+// extractChainData extrai e processa dados de cadeia
 func (c *ChainPipeline) extractChainData(ctx context.Context) error {
-	// Extract Primary Network data
-	if err := c.extractPrimaryNetworkData(ctx); err != nil {
-		log.Printf("Error extracting Primary Network data: %v", err)
-		// Continue with other extractions
-	}
-	
-	// Extract Subnet data
-	if err := c.extractSubnetData(ctx); err != nil {
-		log.Printf("Error extracting Subnet data: %v", err)
-		// Continue with other extractions
-	}
-	
-	// Extract chain-specific metrics for each chain
-	for _, chainID := range c.chains {
-		if err := c.extractChainMetrics(ctx, chainID); err != nil {
-			log.Printf("Error extracting metrics for chain %s: %v", chainID, err)
-			// Continue with the next chain
-		}
-	}
-	
-	return nil
+    // Buscar cadeias
+    chains, err := c.dataAPI.GetChains()
+    if err != nil {
+        return fmt.Errorf("falha ao buscar cadeias: %w", err)
+    }
+    
+    log.Printf("Encontradas %d cadeias para processamento", len(chains))
+    
+    // Processa cada cadeia
+    var wg sync.WaitGroup
+    results := make(chan *types.Chain, len(chains))
+    
+    for _, chain := range chains {
+        wg.Add(1)
+        go func(ch types.Chain) {
+            defer wg.Done()
+            
+            // Busca dados detalhados da cadeia
+            chainData, err := c.dataAPI.GetChainByID(ch.ChainID)
+            if err != nil {
+                log.Printf("Erro ao buscar detalhes da cadeia %s: %v", ch.ChainID, err)
+                return
+            }
+            
+            results <- chainData
+        }(chain)
+    }
+    
+    // Aguarda o processamento de todas as cadeias
+    go func() {
+        wg.Wait()
+        close(results)
+    }()
+    
+    // Publica os dados das cadeias no Kafka
+    for chainData := range results {
+        c.kafkaProducer.PublishChain(chainData)
+    }
+    
+    // Extrai dados da rede primária (validadores, delegadores, etc.)
+    if err := c.extractPrimaryNetworkData(ctx); err != nil {
+        log.Printf("Erro ao extrair dados da rede primária: %v", err)
+        // Continua com outras extrações
+    }
+    
+    // Extrai dados de subnets
+    if err := c.extractSubnetData(ctx); err != nil {
+        log.Printf("Erro ao extrair dados de subnet: %v", err)
+        // Continua com outras extrações
+    }
+    
+    return nil
 }
 
-// extractPrimaryNetworkData extracts data about the Primary Network
+// extractPrimaryNetworkData extrai dados sobre a Rede Primária
 func (c *ChainPipeline) extractPrimaryNetworkData(ctx context.Context) error {
-	// Extract validator data
-	validatorsResp, err := c.dataAPI.GetValidators(c.network, nil, "", &api.PaginationParams{
-		PageSize: 1000, // Adjust as needed
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get validators: %w", err)
-	}
-	
-	log.Printf("Processing %d validators", len(validatorsResp.Validators))
-	
-	// Publish validator data to Kafka
-	for _, validator := range validatorsResp.Validators {
-		validatorData := map[string]interface{}{
-			"nodeId":            validator.NodeID,
-			"startTime":         validator.StartTime,
-			"endTime":           validator.EndTime,
-			"stakeAmount":       validator.StakeAmount,
-			"potentialReward":   validator.PotentialReward,
-			"delegationFee":     validator.DelegationFee,
-			"uptime":            validator.Uptime,
-			"connected":         validator.Connected,
-			"stakeOwnerAddress": validator.StakeOwnerAddress,
-			"network":           c.network,
-			"updateTime":        time.Now().Unix(),
-		}
-		
-		if len(validator.SubnetIDs) > 0 {
-			validatorData["subnetIds"] = validator.SubnetIDs
-		}
-		
-		validatorDataJSON, err := json.Marshal(validatorData)
-		if err != nil {
-			log.Printf("Error marshaling validator data: %v", err)
-			continue
-		}
-		
-		if err := c.kafkaProducer.PublishValidator(c.network, validator.NodeID, validatorDataJSON); err != nil {
-			log.Printf("Error publishing validator data to Kafka: %v", err)
-			// Continue with the next validator
-		}
-	}
-	
-	// Extract delegator data
-	delegatorsResp, err := c.dataAPI.GetDelegators(c.network, &api.PaginationParams{
-		PageSize: 1000, // Adjust as needed
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get delegators: %w", err)
-	}
-	
-	log.Printf("Processing %d delegators", len(delegatorsResp.Delegators))
-	
-	// Publish delegator data to Kafka
-	for _, delegator := range delegatorsResp.Delegators {
-		delegatorData := map[string]interface{}{
-			"nodeId":              delegator.NodeID,
-			"startTime":           delegator.StartTime,
-			"endTime":             delegator.EndTime,
-			"stakeAmount":         delegator.StakeAmount,
-			"potentialReward":     delegator.PotentialReward,
-			"rewardOwnerAddress":  delegator.RewardOwnerAddress,
-			"stakeOwnerAddress":   delegator.StakeOwnerAddress,
-			"network":             c.network,
-			"updateTime":          time.Now().Unix(),
-		}
-		
-		delegatorDataJSON, err := json.Marshal(delegatorData)
-		if err != nil {
-			log.Printf("Error marshaling delegator data: %v", err)
-			continue
-		}
-		
-		if err := c.kafkaProducer.PublishDelegator(c.network, delegator.StakeOwnerAddress, delegatorDataJSON); err != nil {
-			log.Printf("Error publishing delegator data to Kafka: %v", err)
-			// Continue with the next delegator
-		}
-	}
-	
-	return nil
+    // Extrai dados de validadores
+    validators, err := c.dataAPI.GetValidators(c.network)
+    if err != nil {
+        return fmt.Errorf("falha ao buscar validadores: %w", err)
+    }
+    
+    log.Printf("Processando %d validadores", len(validators))
+    
+    // Publica dados de validadores no Kafka
+    for _, validator := range validators {
+        c.kafkaProducer.PublishValidator(validator)
+    }
+    
+    // Extrai dados de delegadores
+    delegators, err := c.dataAPI.GetDelegators(c.network)
+    if err != nil {
+        return fmt.Errorf("falha ao buscar delegadores: %w", err)
+    }
+    
+    log.Printf("Processando %d delegadores", len(delegators))
+    
+    // Publica dados de delegadores no Kafka
+    for _, delegator := range delegators {
+        c.kafkaProducer.PublishDelegator(delegator)
+    }
+    
+    return nil
 }
 
-// extractSubnetData extracts data about Subnets
+// extractSubnetData extrai dados sobre Subnets
 func (c *ChainPipeline) extractSubnetData(ctx context.Context) error {
-	// Extract subnets
-	subnetsResp, err := c.dataAPI.GetSubnets(c.network, &api.PaginationParams{
-		PageSize: 100, // Adjust as needed
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get subnets: %w", err)
-	}
-	
-	log.Printf("Processing %d subnets", len(subnetsResp.Subnets))
-	
-	// Publish subnet data to Kafka
-	for _, subnet := range subnetsResp.Subnets {
-		subnetData := map[string]interface{}{
-			"id":          subnet.ID,
-			"controlKeys": subnet.ControlKeys,
-			"threshold":   subnet.Threshold,
-			"isL1":        subnet.IsL1,
-			"network":     c.network,
-			"updateTime":  time.Now().Unix(),
-		}
-		
-		subnetDataJSON, err := json.Marshal(subnetData)
-		if err != nil {
-			log.Printf("Error marshaling subnet data: %v", err)
-			continue
-		}
-		
-		if err := c.kafkaProducer.PublishSubnet(c.network, subnet.ID, subnetDataJSON); err != nil {
-			log.Printf("Error publishing subnet data to Kafka: %v", err)
-			// Continue with the next subnet
-		}
-	}
-	
-	// Extract blockchains
-	blockchainsResp, err := c.dataAPI.GetBlockchains(c.network, &api.PaginationParams{
-		PageSize: 100, // Adjust as needed
-	})
-	if err != nil {
-		return fmt.Errorf("failed to get blockchains: %w", err)
-	}
-	
-	log.Printf("Processing %d blockchains", len(blockchainsResp.Blockchains))
-	
-	// Publish blockchain data to Kafka
-	for _, blockchain := range blockchainsResp.Blockchains {
-		blockchainData := map[string]interface{}{
-			"id":         blockchain.ID,
-			"name":       blockchain.Name,
-			"subnetId":   blockchain.SubnetID,
-			"vmName":     blockchain.VMName,
-			"network":    c.network,
-			"updateTime": time.Now().Unix(),
-		}
-		
-		blockchainDataJSON, err := json.Marshal(blockchainData)
-		if err != nil {
-			log.Printf("Error marshaling blockchain data: %v", err)
-			continue
-		}
-		
-		if err := c.kafkaProducer.PublishBlockchain(c.network, blockchain.ID, blockchainDataJSON); err != nil {
-			log.Printf("Error publishing blockchain data to Kafka: %v", err)
-			// Continue with the next blockchain
-		}
-	}
-	
-	return nil
-}
-
-// extractChainMetrics extracts metrics for a specific chain
-func (c *ChainPipeline) extractChainMetrics(ctx context.Context, chainID string) error {
-	// Define the time range for metrics (last 24 hours)
-	endTime := time.Now().Unix()
-	startTime := endTime - 86400 // 24 hours in seconds
-	
-	// List of metrics to extract
-	metrics := []api.EVMChainMetric{
-		api.ActiveAddresses,
-		api.TxCount,
-		api.GasUsed,
-		api.AvgTps,
-		api.MaxTps,
-		api.AvgGasPrice,
-		api.FeesPaid,
-	}
-	
-	// Extract each metric
-	for _, metric := range metrics {
-		metricsResp, err := c.metrics.GetEVMChainMetrics(chainID, metric, &api.MetricsParams{
-			StartTimestamp: startTime,
-			EndTimestamp:   endTime,
-			TimeInterval:   api.TimeIntervalHour,
-			PageSize:       24, // 24 hours
-		})
-		if err != nil {
-			log.Printf("Error getting metric %s for chain %s: %v", metric, chainID, err)
-			continue
-		}
-		
-		// Process and publish each data point
-		for _, dataPoint := range metricsResp.Results {
-			metricData := map[string]interface{}{
-				"chainId":    chainID,
-				"metric":     string(metric),
-				"timestamp":  dataPoint.Timestamp,
-				"value":      dataPoint.Value,
-				"updateTime": time.Now().Unix(),
-			}
-			
-			metricDataJSON, err := json.Marshal(metricData)
-			if err != nil {
-				log.Printf("Error marshaling metric data: %v", err)
-				continue
-			}
-			
-			if err := c.kafkaProducer.PublishMetric(chainID, string(metric), metricDataJSON); err != nil {
-				log.Printf("Error publishing metric data to Kafka: %v", err)
-				// Continue with the next data point
-			}
-		}
-	}
-	
-	return nil
-}
-
-// Status returns the current status of the pipeline
-func (c *ChainPipeline) Status() map[string]interface{} {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-	
-	return map[string]interface{}{
-		"running":      c.running,
-		"network":      c.network,
-		"chainCount":   len(c.chains),
-		"chains":       c.chains,
-		"interval":     c.interval.String(),
-	}
+    // Extrai subnets
+    subnets, err := c.dataAPI.GetSubnets(c.network)
+    if err != nil {
+        return fmt.Errorf("falha ao buscar subnets: %w", err)
+    }
+    
+    log.Printf("Processando %d subnets", len(subnets))
+    
+    // Publica dados de subnet no Kafka
+    for _, subnet := range subnets {
+        c.kafkaProducer.PublishSubnet(subnet)
+    }
+    
+    // Extrai blockchains
+    blockchains, err := c.dataAPI.GetBlockchains(c.network)
+    if err != nil {
+        return fmt.Errorf("falha ao buscar blockchains: %w", err)
+    }
+    
+    log.Printf("Processando %d blockchains", len(blockchains))
+    
+    // Publica dados de blockchain no Kafka
+    for _, blockchain := range blockchains {
+        c.kafkaProducer.PublishBlockchain(blockchain)
+    }
+    
+    return nil
 }
