@@ -86,40 +86,71 @@ func (s *GasService) collectionWorker(ctx context.Context, id int) {
 // collectMetrics collects gas metrics for all chains
 func (s *GasService) collectMetrics(ctx context.Context) {
 	log.Printf("[%s] Collecting gas metrics", s.GetName())
-	s.runMetricsCollection(ctx, s.collectChainGasMetrics)
+	s.executeCollection()
+}
+
+// executeCollection collects gas metrics for all chains
+func (s *GasService) executeCollection() error {
+	if err := s.BaseService.executeCollection(); err != nil {
+		return err
+	}
+	
+	chains := s.GetChains()
+	if len(chains) == 0 {
+		log.Printf("[GasService] No chains configured for metrics collection")
+		return nil
+	}
+	
+	for _, chainID := range chains {
+		metrics, err := s.collectChainGasMetrics(chainID)
+		if err != nil {
+			log.Printf("[GasService] Error collecting metrics for chain %s: %v", chainID, err)
+			continue
+		}
+		
+		// Publish metrics to event manager
+		s.publishMetrics(chainID, metrics)
+	}
+	
+	return nil
 }
 
 // collectChainGasMetrics collects gas metrics for a specific chain
-func (s *GasService) collectChainGasMetrics(ctx context.Context, chainID string, startTime, endTime time.Time) {
-	log.Printf("[%s] Collecting gas metrics for chain %s", s.GetName(), chainID)
+func (s *GasService) collectChainGasMetrics(chainID string) (map[string]interface{}, error) {
+	endTime := time.Now()
+	startTime := endTime.Add(-s.lookbackPeriod)
 	
-	// In a real implementation, this would query the API for:
-	// 1. Total gas used in the period
-	// 2. Average and max gas price
-	// 3. Total fees paid in the period
-	// 4. Average gas limit
-	// 5. Gas efficiency (gasUsed/gasLimit ratio)
+	log.Printf("[GasService] Collecting gas metrics for chain %s from %s to %s", 
+		chainID, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	
-	// For this example, we'll create dummy metrics
-	metrics := types.GasMetrics{
-		ChainID:       chainID,
-		Timestamp:     time.Now(),
-		GasUsed:       5000000000,   // Example value
-		AvgGasPrice:   50.0,         // Example value (gwei)
-		MaxGasPrice:   200.0,        // Example value (gwei)
-		FeesPaid:      25.5,         // Example value (native token)
-		AvgGasLimit:   8000000,      // Example value
-		GasEfficiency: 0.75,         // Example value (75% efficiency)
+	// Sample metrics data - in real implementation, this would come from the API
+	metrics := map[string]interface{}{
+		"chainId":             chainID,
+		"timestamp":           endTime.Unix(),
+		"period":              s.lookbackPeriod.String(),
+		"averageGasPrice":     "25000000000",  // 25 gwei
+		"medianGasPrice":      "20000000000",  // 20 gwei
+		"minimumGasPrice":     "15000000000",  // 15 gwei
+		"maximumGasPrice":     "85000000000",  // 85 gwei
+		"totalGasUsed":        "12500000000",
+		"averageGasLimit":     "8000000",
+		"averageGasUsed":      "5500000",
+		"gasUtilizationRate":  68.75,  // percentage
 	}
 	
-	// Publish metrics event to gas metrics topic
-	event := types.GasMetricsEvent{
-		Type:    types.EventGasMetricsUpdated,
-		Metrics: metrics,
+	return metrics, nil
+}
+
+// publishMetrics publishes gas metrics to the event manager
+func (s *GasService) publishMetrics(chainID string, metrics map[string]interface{}) {
+	event := types.Event{
+		Type: types.EventGasMetricsUpdated,
+		Data: metrics,
 	}
 	
-	err := s.PublishEvent(types.EventGasMetricsUpdated, event)
-	if err != nil {
-		log.Printf("[%s] Error publishing gas metrics: %v", s.GetName(), err)
+	if err := s.GetEventManager().PublishEvent(event); err != nil {
+		log.Printf("[GasService] Error publishing gas metrics for chain %s: %v", chainID, err)
+	} else {
+		log.Printf("[GasService] Published gas metrics for chain %s", chainID)
 	}
 } 

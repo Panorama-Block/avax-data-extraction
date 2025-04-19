@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -89,46 +90,55 @@ func (c *Client) SetRateLimits(ratePerSecond float64, burst int) {
     c.RateLimiter = NewRateLimiter(ratePerSecond, burst)
 }
 
+// makeRequest makes a request to the API with the specified endpoint
 func (c *Client) makeRequest(endpoint string) ([]byte, error) {
-    fullURL := c.BaseURL + endpoint
-    log.Printf("[DEBUG] makeRequest => %s", fullURL)
+	return c.makeRequestWithTimeout(endpoint, 10*time.Second)
+}
 
-    // Wait for rate limiter to allow the request
-    c.RateLimiter.Wait()
+// makeRequestWithTimeout makes a request to the API with a custom timeout
+func (c *Client) makeRequestWithTimeout(endpoint string, timeout time.Duration) ([]byte, error) {
+	url := fmt.Sprintf("%s%s", c.BaseURL, endpoint)
+	log.Printf("[DEBUG] makeRequest => %s", url)
 
-    req, err := http.NewRequest("GET", fullURL, nil)
-    if err != nil {
-        return nil, err
-    }
-    req.Header.Set("x-glacier-api-key", c.APIKey)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
 
-    resp, err := c.HTTPClient.Do(req)
-    if err != nil {
-        log.Printf("[makeRequest] erro HTTPClient.Do: %v", err)
-        return nil, err
-    }
-    defer resp.Body.Close()
+	// Set API key if provided
+	if c.APIKey != "" {
+		req.Header.Set("x-glacier-api-key", c.APIKey)
+	}
 
-    if resp.StatusCode == http.StatusTooManyRequests {
-        // Implement retry with backoff for 429 errors
-        retryAfter := 1 * time.Second
-        if retryHeaderValue := resp.Header.Get("Retry-After"); retryHeaderValue != "" {
-            if seconds, err := strconv.Atoi(retryHeaderValue); err == nil {
-                retryAfter = time.Duration(seconds) * time.Second
-            }
-        }
-        
-        log.Printf("[makeRequest] Rate limited. Retrying after %v", retryAfter)
-        time.Sleep(retryAfter)
-        return c.makeRequest(endpoint) // Recursive retry
-    }
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	req = req.WithContext(ctx)
 
-    if resp.StatusCode != http.StatusOK {
-        bodyBytes, _ := io.ReadAll(resp.Body)
-        log.Printf("[makeRequest] body error=%s", string(bodyBytes))
-        return nil, fmt.Errorf("erro na requisição: %s", resp.Status)
-    }
-    return io.ReadAll(resp.Body)
+	// Apply rate limiting if configured
+	if c.RateLimiter != nil {
+		c.RateLimiter.Wait()
+	}
+
+	// Send request
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	// Check status code
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("%s (status: %d)", string(body), resp.StatusCode)
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return body, nil
 }
 
 func (c *Client) SendRequest(method, path string, queryParams url.Values, body io.Reader) ([]byte, error) {

@@ -86,43 +86,71 @@ func (s *ActivityService) collectionWorker(ctx context.Context, id int) {
 // collectMetrics collects activity metrics for all chains
 func (s *ActivityService) collectMetrics(ctx context.Context) {
 	log.Printf("[%s] Collecting activity metrics", s.GetName())
-	s.runMetricsCollection(ctx, s.collectChainActivityMetrics)
+	s.executeCollection()
+}
+
+// executeCollection collects activity metrics for all chains
+func (s *ActivityService) executeCollection() error {
+	if err := s.BaseService.executeCollection(); err != nil {
+		return err
+	}
+	
+	chains := s.GetChains()
+	if len(chains) == 0 {
+		log.Printf("[ActivityService] No chains configured for metrics collection")
+		return nil
+	}
+	
+	for _, chainID := range chains {
+		metrics, err := s.collectChainActivityMetrics(chainID)
+		if err != nil {
+			log.Printf("[ActivityService] Error collecting metrics for chain %s: %v", chainID, err)
+			continue
+		}
+		
+		// Publish metrics to event manager
+		s.publishMetrics(chainID, metrics)
+	}
+	
+	return nil
 }
 
 // collectChainActivityMetrics collects activity metrics for a specific chain
-func (s *ActivityService) collectChainActivityMetrics(ctx context.Context, chainID string, startTime, endTime time.Time) {
-	log.Printf("[%s] Collecting activity metrics for chain %s", s.GetName(), chainID)
+func (s *ActivityService) collectChainActivityMetrics(chainID string) (map[string]interface{}, error) {
+	endTime := time.Now()
+	startTime := endTime.Add(-s.GetLookbackPeriod())
 	
-	// In a real implementation, this would query the API for:
-	// 1. Number of active addresses in the period
-	// 2. Number of active senders in the period
-	// 3. Transaction count in the period
-	// 4. New addresses created in the period
-	// 5. Unique contracts interacted with in the period
+	log.Printf("[ActivityService] Collecting activity metrics for chain %s from %s to %s", 
+		chainID, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
 	
-	// For example (pseudocode):
-	// activeAddresses, err := s.GetAPI().GetActiveAddresses(chainID, startTime, endTime)
-	// if err != nil { log.Printf("Error: %v", err); return }
-	
-	// For this example, we'll create dummy metrics
-	metrics := types.ActivityMetrics{
-		ChainID:         chainID,
-		Timestamp:       time.Now(),
-		ActiveAddresses: 1000, // Example value
-		ActiveSenders:   500,  // Example value
-		TxCount:         5000, // Example value
-		NewAddresses:    200,  // Example value
-		UniqueContracts: 50,   // Example value
+	// Sample metrics data - in real implementation, this would come from the API
+	metrics := map[string]interface{}{
+		"chainId":              chainID,
+		"timestamp":            endTime.Unix(),
+		"period":               s.GetLookbackPeriod().String(),
+		"activeAddresses":      1250,
+		"newAddressesCreated":  145,
+		"transactionCount":     12500,
+		"successfulTxCount":    12350,
+		"failedTxCount":        150,
+		"averageTxPerBlock":    85.5,
+		"totalGasUsed":         "1250000000",
+		"averageTxFee":         "0.00125",
 	}
 	
-	// Publish metrics event to activity metrics topic
-	event := types.ActivityMetricsEvent{
-		Type:    types.EventActivityMetricsUpdated,
-		Metrics: metrics,
+	return metrics, nil
+}
+
+// publishMetrics publishes activity metrics to the event manager
+func (s *ActivityService) publishMetrics(chainID string, metrics map[string]interface{}) {
+	event := types.Event{
+		Type: types.EventActivityMetricsUpdated,
+		Data: metrics,
 	}
 	
-	err := s.PublishEvent(types.EventActivityMetricsUpdated, event)
-	if err != nil {
-		log.Printf("[%s] Error publishing activity metrics: %v", s.GetName(), err)
+	if err := s.GetEventManager().PublishEvent(event); err != nil {
+		log.Printf("[ActivityService] Error publishing activity metrics for chain %s: %v", chainID, err)
+	} else {
+		log.Printf("[ActivityService] Published activity metrics for chain %s", chainID)
 	}
 } 

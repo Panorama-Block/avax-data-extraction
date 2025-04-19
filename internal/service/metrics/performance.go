@@ -86,43 +86,70 @@ func (s *PerformanceService) collectionWorker(ctx context.Context, id int) {
 // collectMetrics collects performance metrics for all chains
 func (s *PerformanceService) collectMetrics(ctx context.Context) {
 	log.Printf("[%s] Collecting performance metrics", s.GetName())
-	s.runMetricsCollection(ctx, s.collectChainPerformanceMetrics)
+	s.executeCollection()
+}
+
+// executeCollection collects performance metrics for all chains
+func (s *PerformanceService) executeCollection() error {
+	if err := s.BaseService.executeCollection(); err != nil {
+		return err
+	}
+	
+	chains := s.GetChains()
+	if len(chains) == 0 {
+		log.Printf("[PerformanceService] No chains configured for metrics collection")
+		return nil
+	}
+	
+	for _, chainID := range chains {
+		metrics, err := s.collectChainPerformanceMetrics(chainID)
+		if err != nil {
+			log.Printf("[PerformanceService] Error collecting metrics for chain %s: %v", chainID, err)
+			continue
+		}
+		
+		// Publish metrics to event manager
+		s.publishMetrics(chainID, metrics)
+	}
+	
+	return nil
 }
 
 // collectChainPerformanceMetrics collects performance metrics for a specific chain
-func (s *PerformanceService) collectChainPerformanceMetrics(ctx context.Context, chainID string, startTime, endTime time.Time) {
-	log.Printf("[%s] Collecting performance metrics for chain %s", s.GetName(), chainID)
+func (s *PerformanceService) collectChainPerformanceMetrics(chainID string) (map[string]interface{}, error) {
+	endTime := time.Now()
+	startTime := endTime.Add(-s.lookbackPeriod)
 	
-	// In a real implementation, this would query the API for:
-	// 1. Average and max TPS (transactions per second)
-	// 2. Average and max GPS (gas per second)
-	// 3. Average block time
-	// 4. Average transaction latency
+	log.Printf("[PerformanceService] Collecting performance metrics for chain %s from %s to %s", 
+		chainID, startTime.Format(time.RFC3339), endTime.Format(time.RFC3339))
+	
+	// Sample metrics data - in real implementation, this would come from the API
+	metrics := map[string]interface{}{
+		"chainId":               chainID,
+		"timestamp":             endTime.Unix(),
+		"period":                s.lookbackPeriod.String(),
+		"averageTps":            85.2,
+		"peakTps":               350.5,
+		"averageBlockTime":      2.15,
+		"currentBlockTime":      2.05,
+		"averageBlockSize":      245678,
+		"currentMemPoolSize":    157,
+		"averageConfirmationTime": 12.5,
+	}
+	
+	return metrics, nil
+}
 
-	// For example, to calculate TPS:
-	// 1. Get total transaction count in the period
-	// 2. Divide by the duration of the period in seconds
-	
-	// For this example, we'll create dummy metrics
-	metrics := types.PerformanceMetrics{
-		ChainID:    chainID,
-		Timestamp:  time.Now(),
-		AvgTPS:     25.5,  // Example value
-		MaxTPS:     100.0, // Example value
-		AvgGPS:     450000.0, // Example value (gas per second)
-		MaxGPS:     1200000.0, // Example value
-		BlockTime:  2.0,   // Example value (seconds)
-		AvgLatency: 5.0,   // Example value (seconds)
+// publishMetrics publishes performance metrics to the event manager
+func (s *PerformanceService) publishMetrics(chainID string, metrics map[string]interface{}) {
+	event := types.Event{
+		Type: types.EventPerformanceMetricsUpdated,
+		Data: metrics,
 	}
 	
-	// Publish metrics event to performance metrics topic
-	event := types.PerformanceMetricsEvent{
-		Type:    types.EventPerformanceMetricsUpdated,
-		Metrics: metrics,
-	}
-	
-	err := s.PublishEvent(types.EventPerformanceMetricsUpdated, event)
-	if err != nil {
-		log.Printf("[%s] Error publishing performance metrics: %v", s.GetName(), err)
+	if err := s.GetEventManager().PublishEvent(event); err != nil {
+		log.Printf("[PerformanceService] Error publishing performance metrics for chain %s: %v", chainID, err)
+	} else {
+		log.Printf("[PerformanceService] Published performance metrics for chain %s", chainID)
 	}
 } 

@@ -22,6 +22,7 @@ type Config struct {
     KafkaTopicERC20        string
     KafkaTopicERC721       string
     KafkaTopicERC1155      string
+    KafkaTopicInternalTx   string
     KafkaTopicMetrics      string
     
     // New specific metrics topics
@@ -40,6 +41,18 @@ type Config struct {
     WebSocketPort  string
     Workers        int
     TokenAddresses []string
+
+    // Enable realtime extraction of blocks via WebSocket
+    EnableRealtime bool
+    
+    // Enable creation of C-Chain webhook on AvaCloud
+    CreateCChainWebhook bool
+    
+    // AvaCloud Webhook Configuration
+    AvaCloudAPIKey      string
+    AvaCloudAPIBaseURL  string
+    WebhookURL          string
+    WebhookSecret       string
 }
 
 func LoadConfig() *Config {
@@ -72,6 +85,9 @@ func LoadConfig() *Config {
 
     // Get default metrics topic as fallback for specific metrics topics
     defaultMetricsTopic := os.Getenv("KAFKA_TOPIC_METRICS")
+    if defaultMetricsTopic == "" {
+        log.Fatalf("ERRO: KAFKA_TOPIC_METRICS não pode estar vazio!")
+    }
     
     // Try to get specific metrics topics or fall back to the default metrics topic
     activityMetricsTopic := os.Getenv("KAFKA_TOPIC_ACTIVITY_METRICS")
@@ -89,9 +105,23 @@ func LoadConfig() *Config {
         gasMetricsTopic = defaultMetricsTopic
     }
     
-    cumulativeMetricsTopic := os.Getenv("KAFKA_TOPIC_CUMULATIVE_METRICS")
+	cumulativeMetricsTopic := os.Getenv("KAFKA_TOPIC_CUMULATIVE_METRICS")
     if cumulativeMetricsTopic == "" {
         cumulativeMetricsTopic = defaultMetricsTopic
+    }
+
+    // Parse the EnableRealtime setting
+    enableRealtimeStr := os.Getenv("ENABLE_REALTIME")
+    enableRealtime := false
+    if enableRealtimeStr == "true" || enableRealtimeStr == "1" || enableRealtimeStr == "yes" {
+        enableRealtime = true
+    }
+
+    // Parse the CreateCChainWebhook setting
+    createCChainWebhookStr := os.Getenv("CREATE_C_CHAIN_WEBHOOK")
+    createCChainWebhook := false
+    if createCChainWebhookStr == "true" || createCChainWebhookStr == "1" || createCChainWebhookStr == "yes" {
+        createCChainWebhook = true
     }
 
     return &Config{
@@ -109,6 +139,7 @@ func LoadConfig() *Config {
         KafkaTopicERC20:        os.Getenv("KAFKA_TOPIC_ERC20"),
         KafkaTopicERC721:       os.Getenv("KAFKA_TOPIC_ERC721"),
         KafkaTopicERC1155:      os.Getenv("KAFKA_TOPIC_ERC1155"),
+        KafkaTopicInternalTx:   os.Getenv("KAFKA_TOPIC_INTERNAL_TX"),
         KafkaTopicMetrics:      defaultMetricsTopic,
         
         // Assign specific metrics topics
@@ -127,5 +158,13 @@ func LoadConfig() *Config {
         WebSocketPort:  os.Getenv("WEBSOCKET_PORT"),
         Workers:        workers,
         TokenAddresses: tokenAddresses,
+        EnableRealtime: enableRealtime,
+        CreateCChainWebhook: createCChainWebhook,
+        
+        // AvaCloud Webhook Configuration
+        AvaCloudAPIKey:     os.Getenv("AVACLOUD_API_KEY"),
+        AvaCloudAPIBaseURL: os.Getenv("AVACLOUD_API_BASE_URL"),
+        WebhookURL:         os.Getenv("WEBHOOK_URL"),
+        WebhookSecret:      os.Getenv("WEBHOOK_SECRET"),
     }
 }

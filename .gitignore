@@ -1,3 +1,120 @@
-.env
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.bin
 
-.env.example
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+*.prof
+*.cov
+
+# Go specific
+.DS_Store
+/vendor/
+/Godeps/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build artifacts
+/bin/
+/dist/
+/build/
+/tmp/
+
+# Log files
+*.log
+logs/
+log/
+
+# Dependency directories
+/node_modules/
+/jspm_packages/
+
+# Kafka and Zookeeper data
+/data/kafka/
+/data/zookeeper/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.bolt
+
+# TLS/SSL certificates in dev
+*.pem
+*.key
+*.crt
+*.cer
+dev-certs/
+
+# API documentation
+/api-docs/
+
+# Generated files
+swagger/
+generated/
+*_gen.go
+
+# Docker specific
+.dockerignore
+docker-compose.override.yml
+
+# Local config overrides
+config.local.yaml
+*_local.yaml
+*_local.json
+
+# Test coverage
+coverage.txt
+coverage.html
+
+# Debug files
+debug
+__debug_bin
+
+# Temporary files
+*.tmp
+*.backup
+*~
+.\#*
+
+# System files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS specific
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Terraform files
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+
+# Crash log files
+crash.log
