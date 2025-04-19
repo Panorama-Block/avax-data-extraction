@@ -1,20 +1,20 @@
 package extractor
 
 import (
-    "context"
-    "fmt"
-    "log"
-    "sync"
-    "time"
+	"context"
+	"fmt"
+	"log"
+	"sync"
+	"time"
 
-    "github.com/Panorama-Block/avax/internal/api"
-    "github.com/Panorama-Block/avax/internal/kafka"
-    "github.com/Panorama-Block/avax/internal/types"
+	"github.com/Panorama-Block/avax/internal/api"
+	"github.com/Panorama-Block/avax/internal/kafka"
+	"github.com/Panorama-Block/avax/internal/types"
 )
 
 type TransactionPipeline struct {
     dataAPI       *api.DataAPI
-    kafkaProducer *kafka.Producer
+    kafkaProducer kafka.KafkaProducer
     
     eventCh       chan types.WebhookEvent
     stop          chan struct{}
@@ -31,7 +31,7 @@ type TransactionPipeline struct {
 
 func NewTransactionPipeline(
     dataAPI *api.DataAPI,
-    kafkaProducer *kafka.Producer,
+    kafkaProducer kafka.KafkaProducer,
     workerCount int,
     bufferSize int,
 ) *TransactionPipeline {
@@ -105,6 +105,7 @@ func (t *TransactionPipeline) worker(ctx context.Context, id int) {
             erc20Chan := make(chan types.ERC20Transfer, len(event.Event.Transaction.ERC20Transfers))
             erc721Chan := make(chan types.ERC721Transfer, len(event.Event.Transaction.ERC721Transfers))
             erc1155Chan := make(chan types.ERC1155Transfer, len(event.Event.Transaction.ERC1155Transfers))
+            internalTxChan := make(chan types.InternalTransaction, len(event.Event.Transaction.InternalTransactions))
             logChan := make(chan types.Log, len(event.Event.Transaction.Logs))
             
             txChan <- &event.Event.Transaction
@@ -118,6 +119,9 @@ func (t *TransactionPipeline) worker(ctx context.Context, id int) {
             for _, e1155 := range event.Event.Transaction.ERC1155Transfers {
                 erc1155Chan <- e1155
             }
+            for _, itx := range event.Event.Transaction.InternalTransactions {
+                internalTxChan <- itx
+            }
             for _, lg := range event.Event.Transaction.Logs {
                 logChan <- lg
             }
@@ -126,12 +130,14 @@ func (t *TransactionPipeline) worker(ctx context.Context, id int) {
             close(erc20Chan)
             close(erc721Chan)
             close(erc1155Chan)
+            close(internalTxChan)
             close(logChan)
             
             go t.kafkaProducer.PublishTransactions(txChan)
             go t.kafkaProducer.PublishERC20Transfers(erc20Chan)
             go t.kafkaProducer.PublishERC721Transfers(erc721Chan)
             go t.kafkaProducer.PublishERC1155Transfers(erc1155Chan)
+            go t.kafkaProducer.PublishInternalTransactions(internalTxChan)
             go t.kafkaProducer.PublishLogs(logChan)
             
             t.mutex.Lock()
@@ -160,4 +166,16 @@ func (t *TransactionPipeline) Status() map[string]interface{} {
         "uptime":         uptime,
         "startTime":      t.startTime.Format(time.RFC3339),
     }
+}
+
+// GetName returns the service name
+func (t *TransactionPipeline) GetName() string {
+    return "TransactionPipeline"
+}
+
+// IsRunning returns the running status
+func (t *TransactionPipeline) IsRunning() bool {
+    t.mutex.Lock()
+    defer t.mutex.Unlock()
+    return t.running
 }

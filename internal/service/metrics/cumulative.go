@@ -90,41 +90,68 @@ func (s *CumulativeService) collectionWorker(ctx context.Context, id int) {
 // collectMetrics collects cumulative metrics for all chains
 func (s *CumulativeService) collectMetrics(ctx context.Context) {
 	log.Printf("[%s] Collecting cumulative metrics", s.GetName())
-	s.runMetricsCollection(ctx, s.collectChainCumulativeMetrics)
+	s.executeCollection()
+}
+
+// executeCollection collects cumulative metrics for all chains
+func (s *CumulativeService) executeCollection() error {
+	if err := s.BaseService.executeCollection(); err != nil {
+		return err
+	}
+	
+	chains := s.GetChains()
+	if len(chains) == 0 {
+		log.Printf("[CumulativeService] No chains configured for metrics collection")
+		return nil
+	}
+	
+	for _, chainID := range chains {
+		metrics, err := s.collectChainCumulativeMetrics(chainID)
+		if err != nil {
+			log.Printf("[CumulativeService] Error collecting metrics for chain %s: %v", chainID, err)
+			continue
+		}
+		
+		// Publish metrics to event manager
+		s.publishMetrics(chainID, metrics)
+	}
+	
+	return nil
 }
 
 // collectChainCumulativeMetrics collects cumulative metrics for a specific chain
-func (s *CumulativeService) collectChainCumulativeMetrics(ctx context.Context, chainID string, startTime, endTime time.Time) {
-	log.Printf("[%s] Collecting cumulative metrics for chain %s", s.GetName(), chainID)
+func (s *CumulativeService) collectChainCumulativeMetrics(chainID string) (map[string]interface{}, error) {
+	log.Printf("[CumulativeService] Collecting cumulative metrics for chain %s", chainID)
 	
-	// In a real implementation, this would query the API for:
-	// 1. Total all-time transaction count
-	// 2. Total unique addresses
-	// 3. Total contracts deployed
-	// 4. Total tokens created
-	// 5. Total gas used
-	// 6. Total fees collected
-	
-	// For this example, we'll create dummy metrics
-	metrics := types.CumulativeMetrics{
-		ChainID:             chainID,
-		Timestamp:           time.Now(),
-		TotalTxs:            10000000,       // Example value
-		TotalAddresses:      500000,         // Example value
-		TotalContracts:      5000,           // Example value
-		TotalTokens:         1200,           // Example value
-		TotalGasUsed:        5000000000000,  // Example value
-		TotalFeesCollected:  25000.0,        // Example value
+	// Sample metrics data - in real implementation, this would come from the API
+	metrics := map[string]interface{}{
+		"chainId":                     chainID,
+		"timestamp":                   time.Now().Unix(),
+		"totalTransactions":           45689720,
+		"totalAccounts":               2356987,
+		"totalActiveAccounts":         985642,
+		"totalContractsDeployed":      125678,
+		"activeContractsLastMonth":    45620,
+		"totalGasUsed":                "1254789654123000",
+		"totalBlocksProduced":         15784523,
+		"averageBlockSize":            350750,
+		"totalValueTransferred":       "125478965412300000000000", // in wei
+		"totalValueTransferredUSD":    "245789654123.50",
 	}
 	
-	// Publish metrics event to cumulative metrics topic
-	event := types.CumulativeMetricsEvent{
-		Type:    types.EventCumulativeMetricsUpdated,
-		Metrics: metrics,
+	return metrics, nil
+}
+
+// publishMetrics publishes cumulative metrics to the event manager
+func (s *CumulativeService) publishMetrics(chainID string, metrics map[string]interface{}) {
+	event := types.Event{
+		Type: types.EventCumulativeMetricsUpdated,
+		Data: metrics,
 	}
 	
-	err := s.PublishEvent(types.EventCumulativeMetricsUpdated, event)
-	if err != nil {
-		log.Printf("[%s] Error publishing cumulative metrics: %v", s.GetName(), err)
+	if err := s.GetEventManager().PublishEvent(event); err != nil {
+		log.Printf("[CumulativeService] Error publishing cumulative metrics for chain %s: %v", chainID, err)
+	} else {
+		log.Printf("[CumulativeService] Published cumulative metrics for chain %s", chainID)
 	}
 } 

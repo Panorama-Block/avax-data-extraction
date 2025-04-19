@@ -1,16 +1,16 @@
 package extractor
 
 import (
-    "context"
-    "encoding/json"
-    "fmt"
-    "log"
-    "sync"
-    "time"
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"sync"
+	"time"
 
-    "github.com/Panorama-Block/avax/internal/api"
-    "github.com/Panorama-Block/avax/internal/kafka"
-    "github.com/gorilla/websocket"
+	"github.com/Panorama-Block/avax/internal/api"
+	"github.com/Panorama-Block/avax/internal/kafka"
+	"github.com/gorilla/websocket"
 )
 
 type newHeadsData struct {
@@ -21,7 +21,7 @@ type newHeadsData struct {
 
 type RealTimeExtractor struct {
     dataAPI       *api.DataAPI
-    kafkaProducer *kafka.Producer
+    kafkaProducer kafka.KafkaProducer
     wsEndpoint    string
     chainID       string
     chainName     string
@@ -39,7 +39,7 @@ type RealTimeExtractor struct {
 
 func NewRealTimeExtractor(
     dataAPI *api.DataAPI,
-    kafkaProducer *kafka.Producer,
+    kafkaProducer kafka.KafkaProducer,
     wsEndpoint string,
     chainID string,
     chainName string,
@@ -182,7 +182,8 @@ func (r *RealTimeExtractor) processBlocks(ctx context.Context) {
         case <-r.stop:
             return
         case blockHeader := <-r.blocksCh:
-            // time.Sleep(800 * time.Millisecond)
+            // Add a sleep before fetching block details to prevent API rate limiting
+            time.Sleep(500 * time.Millisecond)
             log.Printf("Processando bloco: hash=%s", blockHeader.Hash)
             
             block, err := r.dataAPI.GetBlockByNumberOrHash(r.chainID, blockHeader.Hash)
@@ -220,4 +221,16 @@ func (r *RealTimeExtractor) reconnect() error {
     
     log.Printf("Reconectado ao WebSocket para chain %s", r.chainName)
     return nil
+}
+
+// GetName returns the service name
+func (r *RealTimeExtractor) GetName() string {
+    return "RealTimeExtractor-" + r.chainName
+}
+
+// IsRunning returns the running status
+func (r *RealTimeExtractor) IsRunning() bool {
+    r.mutex.Lock()
+    defer r.mutex.Unlock()
+    return r.running
 }

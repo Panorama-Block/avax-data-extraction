@@ -20,7 +20,8 @@ func NewTeleporterAPI(client *Client) *TeleporterAPI {
 
 // GetTeleporterTxs retrieves teleporter transactions between chains
 func (c *TeleporterAPI) GetTeleporterTxs(sourceChain, destChain string) ([]types.TeleporterTx, error) {
-	endpoint := fmt.Sprintf("/teleporter/transactions?sourceChain=%s&destChain=%s", sourceChain, destChain)
+	endpoint := fmt.Sprintf("/v2/teleporter/txs?sourceChain=%s&destChain=%s", sourceChain, destChain)
+	log.Printf("Fetching teleporter transactions from endpoint: %s", endpoint)
 	body, err := c.client.makeRequest(endpoint)
 	if err != nil {
 		log.Printf("Error fetching teleporter transactions: %v", err)

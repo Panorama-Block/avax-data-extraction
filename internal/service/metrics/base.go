@@ -21,6 +21,7 @@ type BaseService struct {
 	chainMutex          sync.RWMutex
 	collectionInterval  time.Duration
 	lookbackPeriod      time.Duration
+	context             context.Context
 }
 
 // NewBaseService creates a new base metrics service
@@ -39,6 +40,7 @@ func NewBaseService(
 		chains:            []string{},
 		collectionInterval: collectionInterval,
 		lookbackPeriod:    lookbackPeriod,
+		context:           context.Background(),
 	}
 }
 
@@ -104,17 +106,43 @@ func (s *BaseService) GetTimeRange() (time.Time, time.Time) {
 	return startTime, endTime
 }
 
-// Start starts the metrics service
+// Start starts the service
 func (s *BaseService) Start() error {
 	if err := s.Base.Start(); err != nil {
 		return err
 	}
 	
-	// Subscribe to chain events to auto-add new chains
-	s.GetEventManager().Subscribe("chain.created", s.handleChainEvent)
-	s.GetEventManager().Subscribe("chain.updated", s.handleChainEvent)
+	// Log the metrics topics being used
+	log.Printf("[%s] Started with metrics collection interval: %s", s.GetName(), s.collectionInterval)
 	
-	log.Printf("[%s] Started successfully", s.GetName())
+	// Execute once immediately
+	if err := s.executeCollection(); err != nil {
+		log.Printf("[%s] Initial metrics collection failed: %v", s.GetName(), err)
+	}
+	
+	// Schedule periodic collection
+	ticker := time.NewTicker(s.collectionInterval)
+	go func() {
+		for {
+			select {
+			case <-s.context.Done():
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				if err := s.executeCollection(); err != nil {
+					log.Printf("[%s] Metrics collection failed: %v", s.GetName(), err)
+				}
+			}
+		}
+	}()
+	
+	return nil
+}
+
+// executeCollection is a helper method to run the collection process
+func (s *BaseService) executeCollection() error {
+	s.SetLastCollectionTime(time.Now())
+	log.Printf("[%s] Collecting metrics for chains: %v", s.GetName(), s.GetChains())
 	return nil
 }
 

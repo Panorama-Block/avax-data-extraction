@@ -1,12 +1,12 @@
 package kafka
 
 import (
-    "encoding/json"
-    "log"
+	"encoding/json"
+	"log"
 
-    ckafka "github.com/confluentinc/confluent-kafka-go/kafka"
-    "github.com/Panorama-Block/avax/internal/config"
-    "github.com/Panorama-Block/avax/internal/types"
+	"github.com/Panorama-Block/avax/internal/config"
+	"github.com/Panorama-Block/avax/internal/types"
+	ckafka "github.com/confluentinc/confluent-kafka-go/kafka"
 )
 
 type Producer struct {
@@ -18,6 +18,7 @@ type Producer struct {
     TopicERC20           string
     TopicERC721          string
     TopicERC1155         string
+    TopicInternalTx      string
     TopicMetrics         string
     
     // New specific metrics topics
@@ -49,6 +50,7 @@ func NewProducer(cfg *config.Config) *Producer {
         TopicERC20:        cfg.KafkaTopicERC20,
         TopicERC721:       cfg.KafkaTopicERC721,
         TopicERC1155:      cfg.KafkaTopicERC1155,
+        TopicInternalTx:   cfg.KafkaTopicInternalTx,
         TopicMetrics:      cfg.KafkaTopicMetrics,
         
         // Initialize specific metrics topics
@@ -66,6 +68,11 @@ func NewProducer(cfg *config.Config) *Producer {
 }
 
 func (p *Producer) sendMessage(topic string, data []byte) error {
+    if topic == "" {
+        log.Printf("[Kafka] Tópico vazio – mensagem descartada (tipo=%T)", data)
+        return nil
+    }
+
     msg := &ckafka.Message{
         TopicPartition: ckafka.TopicPartition{Topic: &topic, Partition: ckafka.PartitionAny},
         Value:          data,
@@ -106,6 +113,13 @@ func (p *Producer) PublishERC1155Transfers(erc1155Chan <-chan types.ERC1155Trans
     for transfer := range erc1155Chan {
         data, _ := json.Marshal(transfer)
         p.sendMessage(p.TopicERC1155, data)
+    }
+}
+
+func (p *Producer) PublishInternalTransactions(internalTxChan <-chan types.InternalTransaction) {
+    for tx := range internalTxChan {
+        data, _ := json.Marshal(tx)
+        p.sendMessage(p.TopicInternalTx, data)
     }
 }
 

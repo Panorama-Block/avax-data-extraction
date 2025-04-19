@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/Panorama-Block/avax/internal/types"
 )
@@ -21,7 +22,9 @@ func NewDelegatorsAPI(client *Client) *DelegatorsAPI {
 // GetDelegators retrieves all delegators for a network
 func (c *DelegatorsAPI) GetDelegators(network string) ([]types.Delegator, error) {
 	endpoint := fmt.Sprintf("/networks/%s/delegators", network)
-	body, err := c.client.makeRequest(endpoint)
+	log.Printf("Fetching delegators with extended timeout for network %s", network)
+	// Use 30 second timeout for this request as it can return a large dataset
+	body, err := c.client.makeRequestWithTimeout(endpoint, 30*time.Second)
 	if err != nil {
 		log.Printf("Error fetching delegators for network %s: %v", network, err)
 		return nil, err
