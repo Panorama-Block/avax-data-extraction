@@ -39,6 +39,7 @@ func (ep *EventProducer) ProcessEvents(events []types.Event) error {
 			continue
 		}
 
+		// Send only the data, not the type
 		eventsByTopic[topic] = append(eventsByTopic[topic], event.Data)
 	}
 
@@ -59,7 +60,7 @@ func (ep *EventProducer) HandleEvent(event types.Event) error {
 		return fmt.Errorf("no topic mapping for event type: %s", event.Type)
 	}
 
-	// Publish single event
+	// Publish single event with only the data
 	return ep.publishToTopic(topic, []interface{}{event.Data})
 }
 
@@ -121,4 +122,4 @@ func (ep *EventProducer) publishToTopic(topic string, events []interface{}) erro
 // Close closes the producer
 func (ep *EventProducer) Close() {
 	ep.producer.Close()
-} 
+}
