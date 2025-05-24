@@ -15,19 +15,19 @@ import (
 // Service fetches and processes blocks
 type Service struct {
 	*service.Base
-	lastSyncTime     time.Time
-	lastSyncMutex    sync.Mutex
-	chains           []string
-	chainMutex       sync.RWMutex
-	processedBlocks  map[string]map[string]time.Time // chainID -> blockNumber -> time
-	blocksMutex      sync.RWMutex
-	pageSize         int
+	lastSyncTime    time.Time
+	lastSyncMutex   sync.Mutex
+	chains          []string
+	chainMutex      sync.RWMutex
+	processedBlocks map[string]map[string]time.Time // chainID -> blockNumber -> time
+	blocksMutex     sync.RWMutex
+	pageSize        int
 }
 
 // NewService creates a new block service
 func NewService(api *api.API, eventManager *event.Manager, options ...service.ServiceOption) *Service {
 	baseService := service.NewBase(api, eventManager, "block-service", options...)
-	
+
 	return &Service{
 		Base:            baseService,
 		chains:          []string{},
@@ -41,16 +41,16 @@ func (s *Service) Start() error {
 	if err := s.Base.Start(); err != nil {
 		return err
 	}
-	
+
 	// Subscribe to chain events
 	s.GetEventManager().Subscribe(types.EventChainCreated, s.handleChainEvent)
 	s.GetEventManager().Subscribe(types.EventChainUpdated, s.handleChainEvent)
-	
+
 	// Start block sync workers
 	for i := 0; i < s.GetWorkerCount(); i++ {
 		s.RunWorker(i, s.syncWorker)
 	}
-	
+
 	log.Printf("[%s] Started successfully", s.GetName())
 	return nil
 }
@@ -60,7 +60,7 @@ func (s *Service) SetChains(chains []string) {
 	s.chainMutex.Lock()
 	defer s.chainMutex.Unlock()
 	s.chains = chains
-	
+
 	// Initialize processed blocks map for each chain
 	s.blocksMutex.Lock()
 	defer s.blocksMutex.Unlock()
@@ -100,9 +100,9 @@ func (s *Service) handleChainEvent(event types.Event) error {
 		log.Printf("[%s] Invalid chain event data", s.GetName())
 		return nil
 	}
-	
+
 	chainID := chainEvent.Chain.ChainID
-	
+
 	// Add chain to our list if it's not already there
 	s.chainMutex.Lock()
 	found := false
@@ -112,10 +112,10 @@ func (s *Service) handleChainEvent(event types.Event) error {
 			break
 		}
 	}
-	
+
 	if !found {
 		s.chains = append(s.chains, chainID)
-		
+
 		// Initialize processed blocks map for this chain
 		s.blocksMutex.Lock()
 		if _, exists := s.processedBlocks[chainID]; !exists {
@@ -124,17 +124,17 @@ func (s *Service) handleChainEvent(event types.Event) error {
 		s.blocksMutex.Unlock()
 	}
 	s.chainMutex.Unlock()
-	
+
 	return nil
 }
 
 func (s *Service) syncWorker(ctx context.Context, id int) {
 	ticker := time.NewTicker(s.GetPollInterval())
 	defer ticker.Stop()
-	
+
 	// Run immediately on start
 	s.syncBlocks(id)
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -148,15 +148,15 @@ func (s *Service) syncWorker(ctx context.Context, id int) {
 
 func (s *Service) syncBlocks(workerID int) {
 	s.SetLastSyncTime(time.Now())
-	
+
 	chains := s.GetChains()
 	if len(chains) == 0 {
 		return
 	}
-	
+
 	// Simple worker distribution - each worker takes a subset of chains
 	for i, chainID := range chains {
-		if i % s.GetWorkerCount() == workerID {
+		if i%s.GetWorkerCount() == workerID {
 			s.syncChainBlocks(chainID)
 		}
 	}
@@ -164,7 +164,7 @@ func (s *Service) syncBlocks(workerID int) {
 
 func (s *Service) syncChainBlocks(chainID string) {
 	log.Printf("[%s] Syncing blocks for chain %s", s.GetName(), chainID)
-	
+
 	var pageToken string
 	for {
 		blocks, nextPageToken, err := s.GetAPI().Blocks.GetBlocks(chainID, s.pageSize, pageToken)
@@ -172,11 +172,11 @@ func (s *Service) syncChainBlocks(chainID string) {
 			log.Printf("[%s] Error fetching blocks for chain %s: %v", s.GetName(), chainID, err)
 			return
 		}
-		
+
 		for _, block := range blocks {
 			s.processBlock(block)
 		}
-		
+
 		if nextPageToken == "" {
 			break
 		}
@@ -188,35 +188,34 @@ func (s *Service) processBlock(block types.Block) {
 	s.blocksMutex.RLock()
 	blockMap, exists := s.processedBlocks[block.ChainID]
 	s.blocksMutex.RUnlock()
-	
+
 	if !exists {
 		s.blocksMutex.Lock()
 		s.processedBlocks[block.ChainID] = make(map[string]time.Time)
 		blockMap = s.processedBlocks[block.ChainID]
 		s.blocksMutex.Unlock()
 	}
-	
+
 	// Skip blocks we've processed recently
 	s.blocksMutex.RLock()
 	lastProcessed, blockExists := blockMap[block.BlockNumber]
 	s.blocksMutex.RUnlock()
-	
+
 	if blockExists && time.Since(lastProcessed) < s.GetPollInterval() {
 		return
 	}
-	
-	// Publish event for block
+
+	// Publish event for block without type
 	err := s.PublishEvent(types.EventBlockCreated, types.BlockEvent{
-		Type:  types.EventBlockCreated,
 		Block: block,
 	})
-	
+
 	if err != nil {
 		log.Printf("[%s] Error publishing block event: %v", s.GetName(), err)
 		return
 	}
-	
+
 	s.blocksMutex.Lock()
 	s.processedBlocks[block.ChainID][block.BlockNumber] = time.Now()
 	s.blocksMutex.Unlock()
-} 
+}

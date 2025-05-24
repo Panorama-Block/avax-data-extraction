@@ -28,6 +28,5 @@ type Chain struct {
 
 // ChainEvent is used for publishing chain events
 type ChainEvent struct {
-	Type  string `json:"type"`
-	Chain Chain  `json:"chain"`
-} 
+	Chain Chain `json:"chain"`
+}

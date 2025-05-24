@@ -18,6 +18,5 @@ type Block struct {
 
 // BlockEvent is used for publishing block events
 type BlockEvent struct {
-	Type  string `json:"type"`
-	Block Block  `json:"block"`
-} 
+	Block Block `json:"block"`
+}
