@@ -1,3 +1,4 @@
+
 # Avalanche Data Extraction
 
 This service extracts data from Avalanche chains and publishes it to Kafka topics. Below is the documentation of the data structures being sent to each topic.

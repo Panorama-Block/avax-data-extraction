@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  avax_extractor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: avax-data-extractor-deploy
+    ports:
+      - "${PORT_APP:-8081}:${PORT_APP:-8081}"  # Usa PORT_APP do .env ou 8081 como padrão
+    env_file:
+      - .env  # Recomendado usar um .env específico para produção
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro  # Para certificados SSL, se necessário
+    restart: always
+    networks:
+      - avax_deploy_network
+
+networks:
+  avax_deploy_network:
+    driver: bridge 
