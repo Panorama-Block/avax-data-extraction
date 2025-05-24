@@ -23,7 +23,7 @@ type Service struct {
 // NewService creates a new chain service
 func NewService(api *api.API, eventManager *event.Manager, options ...service.ServiceOption) *Service {
 	baseService := service.NewBase(api, eventManager, "chain-service", options...)
-	
+
 	return &Service{
 		Base:            baseService,
 		processedChains: make(map[string]time.Time),
@@ -35,10 +35,10 @@ func (s *Service) Start() error {
 	if err := s.Base.Start(); err != nil {
 		return err
 	}
-	
+
 	// Start chain sync worker
 	s.RunWorker(0, s.syncWorker)
-	
+
 	log.Printf("[%s] Started successfully", s.GetName())
 	return nil
 }
@@ -60,10 +60,10 @@ func (s *Service) GetLastSyncTime() time.Time {
 func (s *Service) syncWorker(ctx context.Context, id int) {
 	ticker := time.NewTicker(s.GetPollInterval())
 	defer ticker.Stop()
-	
+
 	// Run immediately on start
 	s.syncChains()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -78,13 +78,13 @@ func (s *Service) syncWorker(ctx context.Context, id int) {
 func (s *Service) syncChains() {
 	log.Printf("[%s] Syncing chains", s.GetName())
 	s.SetLastSyncTime(time.Now())
-	
+
 	chains, err := s.GetAPI().Chains.GetChains()
 	if err != nil {
 		log.Printf("[%s] Error fetching chains: %v", s.GetName(), err)
 		return
 	}
-	
+
 	for _, chain := range chains {
 		s.processChain(chain)
 	}
@@ -96,17 +96,16 @@ func (s *Service) processChain(chain types.Chain) {
 	if exists && time.Since(lastProcessed) < s.GetPollInterval() {
 		return
 	}
-	
+
 	// Publish event for chain
 	err := s.PublishEvent(types.EventChainUpdated, types.ChainEvent{
-		Type: types.EventChainUpdated,
 		Chain: chain,
 	})
-	
+
 	if err != nil {
 		log.Printf("[%s] Error publishing chain event: %v", s.GetName(), err)
 		return
 	}
-	
+
 	s.processedChains[chain.ChainID] = time.Now()
-} 
+}
