@@ -118,3 +118,4 @@ Icon
 
 # Crash log files
 crash.log
+.env
