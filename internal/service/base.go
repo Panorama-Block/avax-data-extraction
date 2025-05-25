@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 
@@ -12,17 +13,17 @@ import (
 
 // Base provides common functionality for all services
 type Base struct {
-	api             *api.API
-	eventManager    *event.Manager
-	pollInterval    time.Duration
-	workerCount     int
-	workerWg        sync.WaitGroup
-	stopChan        chan struct{}
-	context         context.Context
-	cancelFunc      context.CancelFunc
-	name            string
-	isRunning       bool
-	runningMutex    sync.Mutex
+	api          *api.API
+	eventManager *event.Manager
+	pollInterval time.Duration
+	workerCount  int
+	workerWg     sync.WaitGroup
+	stopChan     chan struct{}
+	context      context.Context
+	cancelFunc   context.CancelFunc
+	name         string
+	isRunning    bool
+	runningMutex sync.Mutex
 }
 
 // ServiceOption is a function that configures a Service
@@ -31,7 +32,7 @@ type ServiceOption func(*Base)
 // NewBase creates a new base service
 func NewBase(api *api.API, eventManager *event.Manager, name string, options ...ServiceOption) *Base {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	base := &Base{
 		api:          api,
 		eventManager: eventManager,
@@ -42,12 +43,12 @@ func NewBase(api *api.API, eventManager *event.Manager, name string, options ...
 		cancelFunc:   cancel,
 		name:         name,
 	}
-	
+
 	// Apply options
 	for _, option := range options {
 		option(base)
 	}
-	
+
 	return base
 }
 
@@ -69,11 +70,13 @@ func WithWorkerCount(count int) ServiceOption {
 func (b *Base) Start() error {
 	b.runningMutex.Lock()
 	defer b.runningMutex.Unlock()
-	
+
 	if b.isRunning {
+		log.Printf("[%s] Service already running", b.name)
 		return nil
 	}
-	
+
+	log.Printf("[%s] Starting base service", b.name)
 	b.isRunning = true
 	return nil
 }
@@ -82,11 +85,11 @@ func (b *Base) Start() error {
 func (b *Base) Stop() {
 	b.runningMutex.Lock()
 	defer b.runningMutex.Unlock()
-	
+
 	if !b.isRunning {
 		return
 	}
-	
+
 	b.cancelFunc()
 	close(b.stopChan)
 	b.workerWg.Wait()
@@ -110,6 +113,7 @@ func (b *Base) PublishEvent(eventType string, data interface{}) error {
 
 // RunWorker runs a worker with the specified ID
 func (b *Base) RunWorker(id int, workerFunc func(context.Context, int)) {
+	log.Printf("[%s] Starting worker %d", b.name, id)
 	b.workerWg.Add(1)
 	go func() {
 		defer b.workerWg.Done()
@@ -145,4 +149,4 @@ func (b *Base) GetPollInterval() time.Duration {
 // GetName returns the service name
 func (b *Base) GetName() string {
 	return b.name
-} 
+}

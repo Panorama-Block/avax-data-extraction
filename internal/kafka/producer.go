@@ -133,6 +133,7 @@ func (p *Producer) PublishLogs(logChan <-chan types.Log) {
 func (p *Producer) PublishChain(ch *types.Chain) {
 	// Marshal only the Chain struct without the type
 	data, _ := json.Marshal(ch)
+	log.Printf("[Kafka] Publishing chain data to topic %s: %s", p.TopicChains, string(data))
 	p.sendMessage(p.TopicChains, data)
 }
 
