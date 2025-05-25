@@ -32,7 +32,9 @@ func NewService(api *api.API, eventManager *event.Manager, options ...service.Se
 
 // Start starts the chain service
 func (s *Service) Start() error {
+	log.Printf("[%s] Starting chain service...", s.GetName())
 	if err := s.Base.Start(); err != nil {
+		log.Printf("[%s] Error starting base service: %v", s.GetName(), err)
 		return err
 	}
 
@@ -58,10 +60,12 @@ func (s *Service) GetLastSyncTime() time.Time {
 }
 
 func (s *Service) syncWorker(ctx context.Context, id int) {
+	log.Printf("[%s] Starting sync worker %d", s.GetName(), id)
 	ticker := time.NewTicker(s.GetPollInterval())
 	defer ticker.Stop()
 
 	// Run immediately on start
+	log.Printf("[%s] Running initial chain sync", s.GetName())
 	s.syncChains()
 
 	for {
@@ -70,22 +74,26 @@ func (s *Service) syncWorker(ctx context.Context, id int) {
 			log.Printf("[%s] Worker %d stopping", s.GetName(), id)
 			return
 		case <-ticker.C:
+			log.Printf("[%s] Ticker triggered, running chain sync", s.GetName())
 			s.syncChains()
 		}
 	}
 }
 
 func (s *Service) syncChains() {
-	log.Printf("[%s] Syncing chains", s.GetName())
+	log.Printf("[%s] Starting chain sync", s.GetName())
 	s.SetLastSyncTime(time.Now())
 
+	log.Printf("[%s] Fetching chains from API", s.GetName())
 	chains, err := s.GetAPI().Chains.GetChains()
 	if err != nil {
 		log.Printf("[%s] Error fetching chains: %v", s.GetName(), err)
 		return
 	}
 
+	log.Printf("[%s] Found %d chains to process", s.GetName(), len(chains))
 	for _, chain := range chains {
+		log.Printf("[%s] Processing chain: %s", s.GetName(), chain.ChainID)
 		s.processChain(chain)
 	}
 }
@@ -94,9 +102,11 @@ func (s *Service) processChain(chain types.Chain) {
 	// Skip chains we've processed recently
 	lastProcessed, exists := s.processedChains[chain.ChainID]
 	if exists && time.Since(lastProcessed) < s.GetPollInterval() {
+		log.Printf("[%s] Skipping chain %s - processed recently", s.GetName(), chain.ChainID)
 		return
 	}
 
+	log.Printf("[%s] Publishing chain event for chain %s", s.GetName(), chain.ChainID)
 	// Publish event for chain
 	err := s.PublishEvent(types.EventChainUpdated, types.ChainEvent{
 		Chain: chain,
@@ -108,4 +118,5 @@ func (s *Service) processChain(chain types.Chain) {
 	}
 
 	s.processedChains[chain.ChainID] = time.Now()
+	log.Printf("[%s] Successfully published chain %s", s.GetName(), chain.ChainID)
 }
