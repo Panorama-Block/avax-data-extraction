@@ -39,12 +39,14 @@ func (ep *EventProducer) ProcessEvents(events []types.Event) error {
 			continue
 		}
 
+		log.Printf("Processing event type %s for topic %s with data: %+v", event.Type, topic, event.Data)
 		// Send only the data, not the type
 		eventsByTopic[topic] = append(eventsByTopic[topic], event.Data)
 	}
 
 	// Publish events by topic
 	for topic, topicEvents := range eventsByTopic {
+		log.Printf("Publishing %d events to topic %s", len(topicEvents), topic)
 		if err := ep.publishToTopic(topic, topicEvents); err != nil {
 			return err
 		}
@@ -72,6 +74,8 @@ func (ep *EventProducer) publishToTopic(topic string, events []interface{}) erro
 			continue
 		}
 
+		log.Printf("Publishing event to topic %s: %s", topic, string(data))
+
 		// Use the appropriate method based on the event type
 		switch e := event.(type) {
 		case types.Block:
@@ -79,9 +83,17 @@ func (ep *EventProducer) publishToTopic(topic string, events []interface{}) erro
 		case *types.Transaction:
 			ep.producer.PublishSingleTx(e)
 		case types.Chain:
+			log.Printf("Publishing Chain event to topic %s", topic)
 			ep.producer.PublishChain(&e)
 		case *types.Chain:
+			log.Printf("Publishing *Chain event to topic %s", topic)
 			ep.producer.PublishChain(e)
+		case types.ChainEvent:
+			log.Printf("Publishing ChainEvent to topic %s", topic)
+			ep.producer.PublishChain(&e.Chain)
+		case *types.ChainEvent:
+			log.Printf("Publishing *ChainEvent to topic %s", topic)
+			ep.producer.PublishChain(&e.Chain)
 		case types.Subnet:
 			ep.producer.PublishSubnet(e)
 		case types.Blockchain:
@@ -112,6 +124,7 @@ func (ep *EventProducer) publishToTopic(topic string, events []interface{}) erro
 			} else if topic == ep.topicMappings[types.EventCumulativeMetricsUpdated] {
 				ep.producer.PublishCumulativeMetrics(data)
 			} else {
+				log.Printf("Publishing Metrics to topic %s", topic)
 				ep.producer.PublishMetrics(data)
 			}
 		}

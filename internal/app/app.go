@@ -31,18 +31,18 @@ type WebhookServer interface {
 
 // App represents the main application
 type App struct {
-	config               *config.Config
-	api                  *api.API
-	eventManager         *event.Manager
-	kafkaProducer        *kafka.EventProducer
-	wsServer             *websocket.Server
-	whServer             WebhookServer
-	services             []Service
-	context              context.Context
-	cancelFunc           context.CancelFunc
-	running              bool
-	runningMutex         sync.Mutex
-	webhookID            string
+	config        *config.Config
+	api           *api.API
+	eventManager  *event.Manager
+	kafkaProducer *kafka.EventProducer
+	wsServer      *websocket.Server
+	whServer      WebhookServer
+	services      []Service
+	context       context.Context
+	cancelFunc    context.CancelFunc
+	running       bool
+	runningMutex  sync.Mutex
+	webhookID     string
 }
 
 // Service interface for all services
@@ -56,12 +56,12 @@ type Service interface {
 // NewApp creates a new application instance
 func NewApp(cfg *config.Config) *App {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Use the rate-limited API client with configuration
 	apiClient := api.NewAPIWithConfig(cfg)
-	
+
 	eventManager := event.NewManager(cfg.Workers, 10000)
-	
+
 	return &App{
 		config:       cfg,
 		api:          apiClient,
@@ -83,9 +83,9 @@ func (a *App) SetupServices() error {
 	// Initialize Kafka producer
 	baseProducer := kafka.NewProducer(a.config)
 	log.Println("Using Kafka producer")
-	
+
 	a.kafkaProducer = kafka.NewEventProducer(baseProducer)
-	
+
 	// Set up Kafka topic mappings
 	a.setupTopicMappings()
 
@@ -95,7 +95,7 @@ func (a *App) SetupServices() error {
 		dataAPI,
 		baseProducer,
 		a.config.Workers,
-		a.config.Workers * 100, // Buffer size proportional to workers
+		a.config.Workers*100, // Buffer size proportional to workers
 	)
 
 	// Start the pipeline and create service adapter
@@ -104,15 +104,15 @@ func (a *App) SetupServices() error {
 	}
 	txPipelineService := extractor.NewTransactionPipelineAdapter(a.context, txPipeline)
 	a.services = append(a.services, txPipelineService)
-	
+
 	// Initialize Webhook server
 	eventChan := make(chan types.WebhookEvent, 1000)
 	webhookServer := webhook.NewWebhookServer(eventChan, a.config.WebhookPort, a.config.WebhookSecret)
 	a.whServer = webhookServer
-	
+
 	// Connect webhook to transaction pipeline
 	a.whServer.SetTransactionPipeline(txPipeline)
-	
+
 	// Create AvaCloud webhook
 	webhookID, err := avacloud.EnsureCChainWebhook(a.config)
 	if err != nil {
@@ -121,22 +121,22 @@ func (a *App) SetupServices() error {
 		a.webhookID = webhookID
 		log.Printf("Webhook C-Chain configurado na AvaCloud: %s", webhookID)
 	}
-	
+
 	// Register batch processor for each event type
 	a.eventManager.RegisterBatchProcessor(
-		types.EventBlockCreated, 
+		types.EventBlockCreated,
 		a.kafkaProducer.ProcessEvents,
 	)
 	a.eventManager.RegisterBatchProcessor(
-		types.EventBlockUpdated, 
+		types.EventBlockUpdated,
 		a.kafkaProducer.ProcessEvents,
 	)
 	a.eventManager.RegisterBatchProcessor(
-		types.EventChainCreated, 
+		types.EventChainCreated,
 		a.kafkaProducer.ProcessEvents,
 	)
 	a.eventManager.RegisterBatchProcessor(
-		types.EventChainUpdated, 
+		types.EventChainUpdated,
 		a.kafkaProducer.ProcessEvents,
 	)
 	a.eventManager.RegisterBatchProcessor(
@@ -163,7 +163,7 @@ func (a *App) SetupServices() error {
 		types.EventLogCreated,
 		a.kafkaProducer.ProcessEvents,
 	)
-	
+
 	// Register batch processors for metrics events
 	a.eventManager.RegisterBatchProcessor(
 		types.EventActivityMetricsUpdated,
@@ -181,7 +181,7 @@ func (a *App) SetupServices() error {
 		types.EventCumulativeMetricsUpdated,
 		a.kafkaProducer.ProcessEvents,
 	)
-	
+
 	// Add RealTime extractor if enabled
 	if a.config.EnableRealtime && a.config.ChainWsUrl != "" {
 		realTimeExtractor := extractor.NewRealTimeExtractor(
@@ -191,7 +191,7 @@ func (a *App) SetupServices() error {
 			"43114", // Avalanche C-Chain
 			"Avalanche C-Chain",
 		)
-		
+
 		// Start extractor and create adapter
 		if err := realTimeExtractor.Start(a.context); err != nil {
 			log.Printf("AVISO: Falha ao iniciar extrator em tempo real: %v", err)
@@ -199,7 +199,7 @@ func (a *App) SetupServices() error {
 			rtExtractorService := extractor.NewRealTimeExtractorAdapter(a.context, realTimeExtractor)
 			a.services = append(a.services, rtExtractorService)
 		}
-		
+
 		// Start periodic jobs for other data
 		cronJobManager := extractor.NewCronJobManager(a.api.Client, baseProducer, "mainnet")
 		if err := cronJobManager.Start(); err != nil {
@@ -208,35 +208,36 @@ func (a *App) SetupServices() error {
 			a.services = append(a.services, cronJobManager)
 		}
 	}
-	
+
 	// Initialize WebSocket server if port is configured
 	if a.config.WebSocketPort != "" {
 		consumer, err := kafka.NewConsumer(a.config.KafkaBroker, "websocket-group", nil)
 		if err != nil {
 			return err
 		}
-		
+
 		a.wsServer = websocket.NewServer(a.config.WebSocketPort, consumer)
 	}
-	
+
 	// Add core services
 	chainService := chain.NewService(
-		a.api, 
-		a.eventManager, 
+		a.api,
+		a.eventManager,
 		service.WithPollInterval(30*time.Second),
 		service.WithWorkerCount(1),
 	)
 	a.services = append(a.services, chainService)
-	
+	log.Printf("Chain service created and added to services list")
+
 	blockService := block.NewService(
-		a.api, 
-		a.eventManager, 
+		a.api,
+		a.eventManager,
 		service.WithPollInterval(15*time.Second),
 		service.WithWorkerCount(5),
 	)
 	blockService.SetChains([]string{"43114"}) // Avalanche C-Chain
 	a.services = append(a.services, blockService)
-	
+
 	// Add metrics services
 	activityMetricsService := metrics.NewActivityService(
 		a.api,
@@ -247,7 +248,7 @@ func (a *App) SetupServices() error {
 	)
 	activityMetricsService.SetChains([]string{"43114"}) // Avalanche C-Chain
 	a.services = append(a.services, activityMetricsService)
-	
+
 	performanceMetricsService := metrics.NewPerformanceService(
 		a.api,
 		a.eventManager,
@@ -257,7 +258,7 @@ func (a *App) SetupServices() error {
 	)
 	performanceMetricsService.SetChains([]string{"43114"}) // Avalanche C-Chain
 	a.services = append(a.services, performanceMetricsService)
-	
+
 	gasMetricsService := metrics.NewGasService(
 		a.api,
 		a.eventManager,
@@ -267,7 +268,7 @@ func (a *App) SetupServices() error {
 	)
 	gasMetricsService.SetChains([]string{"43114"}) // Avalanche C-Chain
 	a.services = append(a.services, gasMetricsService)
-	
+
 	cumulativeMetricsService := metrics.NewCumulativeService(
 		a.api,
 		a.eventManager,
@@ -276,12 +277,15 @@ func (a *App) SetupServices() error {
 	)
 	cumulativeMetricsService.SetChains([]string{"43114"}) // Avalanche C-Chain
 	a.services = append(a.services, cumulativeMetricsService)
-	
+
 	return nil
 }
 
 // setupTopicMappings sets up mappings between event types and Kafka topics
 func (a *App) setupTopicMappings() {
+	log.Printf("Setting up Kafka topic mappings")
+	log.Printf("Mapping chain events to topic: %s", a.config.KafkaTopicChains)
+
 	a.kafkaProducer.RegisterTopicMapping(types.EventBlockCreated, a.config.KafkaTopicBlocks)
 	a.kafkaProducer.RegisterTopicMapping(types.EventBlockUpdated, a.config.KafkaTopicBlocks)
 	a.kafkaProducer.RegisterTopicMapping(types.EventChainCreated, a.config.KafkaTopicChains)
@@ -304,10 +308,10 @@ func (a *App) setupTopicMappings() {
 	a.kafkaProducer.RegisterTopicMapping(types.EventTeleporterTxUpdated, a.config.KafkaTopicBridges)
 	a.kafkaProducer.RegisterTopicMapping(types.EventTokenCreated, a.config.KafkaTopicMetrics)
 	a.kafkaProducer.RegisterTopicMapping(types.EventTokenUpdated, a.config.KafkaTopicMetrics)
-	
+
 	// Map general metrics events to the default metrics topic
 	a.kafkaProducer.RegisterTopicMapping(types.EventMetricsUpdated, a.config.KafkaTopicMetrics)
-	
+
 	// Map specific metrics event types to their dedicated Kafka topics
 	a.kafkaProducer.RegisterTopicMapping(types.EventActivityMetricsUpdated, a.config.KafkaTopicActivityMetrics)
 	a.kafkaProducer.RegisterTopicMapping(types.EventPerformanceMetricsUpdated, a.config.KafkaTopicPerformanceMetrics)
@@ -319,28 +323,28 @@ func (a *App) setupTopicMappings() {
 func (a *App) Start() error {
 	a.runningMutex.Lock()
 	defer a.runningMutex.Unlock()
-	
+
 	if a.running {
 		return nil
 	}
-	
+
 	log.Println("Iniciando aplicação...")
-	log.Printf("Configuração: API URL=%s, WebhookPort=%s, WebSocketPort=%s", 
+	log.Printf("Configuração: API URL=%s, WebhookPort=%s, WebSocketPort=%s",
 		a.config.APIUrl, a.config.WebhookPort, a.config.WebSocketPort)
-	
+
 	// Start event manager
 	if err := a.eventManager.Start(a.context); err != nil {
 		return fmt.Errorf("falha ao iniciar gerenciador de eventos: %w", err)
 	}
 	log.Println("Gerenciador de eventos iniciado com sucesso")
-	
+
 	// Start Webhook server - this is critical
 	log.Println("Iniciando servidor de webhook...")
 	if err := a.whServer.Start(); err != nil {
 		return fmt.Errorf("falha ao iniciar servidor webhook: %w", err)
 	}
 	log.Println("Servidor webhook iniciado com sucesso")
-	
+
 	// Start WebSocket server if configured
 	if a.wsServer != nil {
 		log.Println("Iniciando servidor WebSocket...")
@@ -352,7 +356,7 @@ func (a *App) Start() error {
 			}
 		}()
 	}
-	
+
 	// Start all services
 	log.Printf("Iniciando %d serviços...", len(a.services))
 	for i, svc := range a.services {
@@ -363,10 +367,10 @@ func (a *App) Start() error {
 			log.Printf("Serviço %s iniciado com sucesso", svc.GetName())
 		}
 	}
-	
+
 	a.running = true
 	log.Println("Aplicação iniciada com sucesso. Escutando por webhooks na porta", a.config.WebhookPort)
-	
+
 	return nil
 }
 
@@ -374,33 +378,33 @@ func (a *App) Start() error {
 func (a *App) Stop() {
 	a.runningMutex.Lock()
 	defer a.runningMutex.Unlock()
-	
+
 	if !a.running {
 		return
 	}
-	
+
 	log.Println("Stopping application...")
-	
+
 	// Stop all services
 	for _, svc := range a.services {
 		if svc.IsRunning() {
 			svc.Stop()
 		}
 	}
-	
+
 	// Stop WebSocket server if configured
 	if a.wsServer != nil {
 		a.wsServer.Stop(a.context)
 	}
-	
+
 	// Stop Webhook server
 	if a.whServer != nil {
 		a.whServer.Stop()
 	}
-	
+
 	// Cancel context to stop all operations
 	a.cancelFunc()
-	
+
 	a.running = false
 	log.Println("Application stopped successfully")
-} 
+}
